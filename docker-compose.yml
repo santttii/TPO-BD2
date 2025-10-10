@@ -84,6 +84,22 @@ services:
     networks:
       - tpo-network
 
+  # ----------------------------
+  # 🐍 Python App
+  # ----------------------------
+  app:
+    build: ./app
+    container_name: tpo-python
+    depends_on:
+      - mongodb
+      - neo4j
+      - redis
+    env_file:
+      - ./.env
+    networks:
+      - tpo-network
+    command: ["python", "main.py"]
+
 # ----------------------------
 # 🔗 Volúmenes persistentes
 # ----------------------------

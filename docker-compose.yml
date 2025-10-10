@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # ----------------------------
+  # 🟢 MongoDB + Mongo Express
+  # ----------------------------
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb-tpo
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: tpo_database
+    volumes:
+      - mongodb_data:/data/db
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - tpo-network
+
+  mongo-express:
+    image: mongo-express:1.0.0
+    container_name: mongo-express-tpo
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: password123
+      ME_CONFIG_MONGODB_URL: mongodb://admin:password123@mongodb:27017/
+      ME_CONFIG_BASICAUTH: false
+    depends_on:
+      - mongodb
+    networks:
+      - tpo-network
+
+  # ----------------------------
+  # 🕸 Neo4j
+  # ----------------------------
+  neo4j:
+    image: neo4j:5.18.0-community
+    container_name: neo4j-tpo
+    restart: always
+    ports:
+      - "7474:7474" # Browser
+      - "7687:7687" # Bolt
+    environment:
+      NEO4J_AUTH: neo4j/password
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+    networks:
+      - tpo-network
+
+  # ----------------------------
+  # ⚡ Redis + Redis Commander
+  # ----------------------------
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis-tpo
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - tpo-network
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    restart: always
+    ports:
+      - "8082:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - tpo-network
+
+# ----------------------------
+# 🔗 Volúmenes persistentes
+# ----------------------------
+volumes:
+  mongodb_data:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  redis_data:
+
+# ----------------------------
+# 🌐 Red compartida
+# ----------------------------
+networks:
+  tpo-network:
+    driver: bridge

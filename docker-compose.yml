@@ -88,7 +88,12 @@ services:
   # 🐍 Python App
   # ----------------------------
   app:
-    build: ./app
+    # 1. Corregir la ruta de construcción (contexto de dónde buscar el Dockerfile y el código)
+    # Cambia 'build: ./app' a 'build: .' si el Dockerfile está en la raíz del proyecto.
+    # O usa el objeto 'build' para especificar el contexto y el Dockerfile
+    build:
+      context: . 
+      dockerfile: Dockerfile
     container_name: tpo-python
     depends_on:
       - mongodb
@@ -96,9 +101,16 @@ services:
       - redis
     env_file:
       - ./.env
+    # Mapea tu código fuente para desarrollo (opcional, pero útil)
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src 
     networks:
       - tpo-network
-    command: ["python", "main.py"]
+    # 2. Corregir el comando de inicio para apuntar a la nueva ruta del main.py
+    command: ["python", "main.py"] # <--- RUTA ACTUALIZADA
+    # O si usaste un nombre diferente para el punto de entrada, úsalo aquí.
 
 # ----------------------------
 # 🔗 Volúmenes persistentes

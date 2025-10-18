@@ -1,0 +1,12 @@
+# requirements.txt
+# Drivers para bases de datos (polyglot)
+pymongo
+neo4j
+redis
+
+# Framework de API
+fastapi
+uvicorn[standard] # Servidor asíncrono
+
+# Utilidades
+python-dotenv # Para cargar el archivo .env

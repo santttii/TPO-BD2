@@ -1,4 +1,0 @@
-pymongo
-neo4j
-redis
-python-dotenv

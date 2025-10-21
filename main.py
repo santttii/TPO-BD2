@@ -4,8 +4,12 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 import uvicorn
-# Importamos la función de prueba de conexiones
 from src.config.database import inicializar_conexiones 
+
+# ⬅️ IMPORTACIÓN DE TODOS LOS ROUTERS
+from src.api.routes.users import router as users_router
+from src.api.routes.hiring import router as hiring_router 
+from src.api.routes.learning import router as learning_router
 
 # --- Inicialización ---
 
@@ -29,11 +33,11 @@ async def root():
     """Retorna el estado de la API."""
     return {"message": "API de Talentum+ is up and running."}
 
-# --- Importación de Módulos de Rutas (Endpoints) ---
+# ⬇️⬇️⬇️ INCLUSIÓN/REGISTRO DE MÓDULOS DE RUTAS ⬇️⬇️⬇️
 
-# Pendiente: Importar los routers de users, orders, analytics.
-# from src.api.routes.users import router as users_router
-# app.include_router(users_router, prefix="/api/v1")
+app.include_router(users_router, prefix="/api/v1")
+app.include_router(hiring_router, prefix="/api/v1")
+app.include_router(learning_router, prefix="/api/v1")
 
 
 # --- Inicio del Servidor ---

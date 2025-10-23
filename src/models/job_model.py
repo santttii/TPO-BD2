@@ -1,6 +1,11 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
+from typing import Optional, List
 from bson import ObjectId
+
+
+class Requisitos(BaseModel):
+    obligatorios: List[str] = []
+    deseables: List[str] = []
 
 
 class JobIn(BaseModel):
@@ -9,6 +14,7 @@ class JobIn(BaseModel):
     ubicacion: str
     salario: float
     empresaId: str
+    requisitos: Requisitos
 
 
 class JobOut(JobIn):

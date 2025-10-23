@@ -318,3 +318,22 @@ class Neo4jRepository:
             return self.graph_repo.get_jobs_for_person(person_id)
         except Exception as e:
             raise Exception(f"Error obteniendo empleos postulados: {e}")
+
+    # ===============================================================
+    # 🧩 VINCULAR JOB A SKILLS (obligatorias o deseables)
+    # ===============================================================
+    def link_job_to_skill(self, job_id: str, skill_name: str, tipo: str):
+        """
+        Crea o vincula una habilidad al Job según tipo de requisito.
+        tipo puede ser: 'REQUERIMIENTO_DE' o 'DESEA'
+        """
+        with self.driver.session() as session:
+            session.run(
+                f"""
+                MATCH (j:Job {{id: $job_id}})
+                MERGE (s:Skill {{nombre: $skill}})
+                MERGE (j)-[r:{tipo}]->(s)
+                """,
+                job_id=job_id,
+                skill=skill_name
+            )

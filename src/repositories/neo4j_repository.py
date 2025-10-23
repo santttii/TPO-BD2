@@ -14,20 +14,39 @@ class Neo4jRepository:
         self.driver = get_neo4j_driver()
 
     # ===============================================================
-    # 👤 CREAR NODO PERSONA
+    # 👤 Crear nodo Person y vincular habilidades
     # ===============================================================
-    def create_person_node(self, person_id: str, name: str, role: str):
+    def create_person_node(self, person_id: str, nombre: str, rol: str):
+        """
+        Crea (si no existe) el nodo de Persona en Neo4j.
+        """
         with self.driver.session() as session:
             session.run(
                 """
-                MERGE (p:Person {id: $id})
-                SET p.nombre = $name, p.rol = $role
+                MERGE (p:Person {id: $pid})
+                SET p.nombre = $nombre,
+                    p.rol = $rol
                 """,
-                id=person_id,
-                name=name,
-                role=role
+                pid=person_id,
+                nombre=nombre,
+                rol=rol
             )
-            logging.info(f"🧍 Nodo Person creado o actualizado: {name} ({role})")
+
+    def link_person_to_skill(self, person_id: str, skill_name: str):
+        """
+        Crea (si no existe) la relación (:Person)-[:POSEE_HABILIDAD]->(:Skill)
+        """
+        with self.driver.session() as session:
+            session.run(
+                """
+                MERGE (p:Person {id: $pid})
+                MERGE (s:Skill {nombre: $skill})
+                MERGE (p)-[:POSEE_HABILIDAD]->(s)
+                """,
+                pid=person_id,
+                skill=skill_name
+            )
+
 
     # ===============================================================
     # 🔗 CONEXIÓN UNIDIRECCIONAL

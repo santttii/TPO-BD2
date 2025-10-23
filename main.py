@@ -6,6 +6,8 @@ import uvicorn
 
 from src.config.database import inicializar_conexiones
 from src.api.routes.people_routes import router as people_router
+from src.api.routes.company_routes import router as company_router
+
 load_dotenv()
 
 try:
@@ -21,6 +23,8 @@ async def root():
     return {"message": "✅ API de Talentum+ is up and running."}
 
 app.include_router(people_router, prefix="/api/v1")
+app.include_router(company_router, prefix="/api/v1")  
+
 
 if __name__ == "__main__":
     port = int(os.getenv("TPO_PORT", 8000))

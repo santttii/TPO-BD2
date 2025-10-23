@@ -61,3 +61,31 @@ class PeopleService:
             return self.graph_repo.get_network(person_id)
         except Exception as e:
             raise Exception(f"Error obteniendo red de conexiones: {e}")
+
+
+    def get_common_connections(self, person_id: str, other_id: str):
+        try:
+            return self.graph_repo.get_common_connections(person_id, other_id)
+        except Exception as e:
+            raise Exception(f"Error obteniendo conexiones en común: {e}")
+
+    def get_suggested_connections(self, person_id: str):
+        try:
+            return self.graph_repo.get_suggested_connections(person_id)
+        except Exception as e:
+            raise Exception(f"Error obteniendo sugerencias: {e}")
+    def delete_connection(self, source_id: str, target_id: str, tipo: str = None):
+        """
+        Elimina una relación (o todas) entre dos personas.
+        """
+        try:
+            deleted = self.graph_repo.delete_connection(source_id, target_id, tipo)
+            if deleted == 0:
+                return {"message": "No se encontraron relaciones para eliminar"}
+            return {
+                "message": f"Conexión eliminada entre {source_id} y {target_id}",
+                "deletedCount": deleted,
+                "type": tipo.upper() if tipo else "ALL"
+            }
+        except Exception as e:
+            raise Exception(f"Error al eliminar conexión: {e}")

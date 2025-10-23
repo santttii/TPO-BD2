@@ -98,3 +98,39 @@ def get_network(person_id: str):
         return {"personId": person_id, "connections": network}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{person_id}/connections/common/{other_id}")
+def get_common_connections(person_id: str, other_id: str):
+    """
+    Devuelve las conexiones en común entre dos personas.
+    """
+    try:
+        commons = svc.get_common_connections(person_id, other_id)
+        return {"person1": person_id, "person2": other_id, "commonConnections": commons}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{person_id}/connections/suggested")
+def get_suggested_connections(person_id: str):
+    """
+    Devuelve sugerencias de conexión (segundo grado de relación).
+    """
+    try:
+        suggested = svc.get_suggested_connections(person_id)
+        return {"personId": person_id, "suggestedConnections": suggested}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+from fastapi import Query
+
+@router.delete("/{person_id}/connections/{target_id}")
+def delete_connection(person_id: str, target_id: str, type: str = Query(None, description="Tipo de conexión opcional")):
+    """
+    Elimina una conexión entre dos personas.
+    - Si se pasa ?type=MENTORSHIP → elimina solo ese tipo.
+    - Si no se pasa, elimina todas las relaciones entre ambos.
+    """
+    try:
+        result = svc.delete_connection(person_id, target_id, type)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -239,3 +239,82 @@ class Neo4jRepository:
         with self.driver.session() as session:
             session.run(f"MATCH (n:{label} {{id: $id}}) DETACH DELETE n", id=node_id)
             logging.info(f"🗑️ Nodo {label} eliminado: {node_id}")
+
+    # ===============================================================
+    # 💼 CREAR NODO JOB
+    # ===============================================================
+    def create_job_node(self, job_id: str, titulo: str, empresa_id: str):
+        """
+        Crea un nodo Job y lo conecta con la empresa que lo publica.
+        """
+        with self.driver.session() as session:
+            session.run(
+                """
+                MATCH (e:Company {id: $empresa_id})
+                CREATE (j:Job {id: $id, titulo: $titulo})
+                MERGE (e)-[:PUBLICA]->(j)
+                """,
+                id=job_id,
+                titulo=titulo,
+                empresa_id=empresa_id
+            )
+
+    # ===============================================================
+    # 🧍 PERSONA POSTULA A JOB
+    # ===============================================================
+    def apply_to_job(self, person_id: str, job_id: str):
+        with self.driver.session() as session:
+            session.run(
+                """
+                MATCH (p:Person {id: $pid}), (j:Job {id: $jid})
+                MERGE (p)-[:POSTULA_A]->(j)
+                """,
+                pid=person_id,
+                jid=job_id
+            )
+
+    def get_applicants_for_job(self, job_id: str):
+        """
+        Devuelve todas las personas que postularon a un Job.
+        """
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (p:Person)-[:POSTULA_A]->(j:Job {id: $jid})
+                RETURN p.id AS personId, p.nombre AS nombre, p.rol AS rol
+                """,
+                jid=job_id
+            )
+            return [dict(r) for r in result]
+
+    # ===============================================================
+    # 🧭 OBTENER EMPLEOS A LOS QUE UNA PERSONA SE POSTULÓ
+    # ===============================================================
+    def get_jobs_for_person(self, person_id: str):
+        """
+        Devuelve todos los empleos a los que una persona se postuló.
+        """
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (p:Person {id: $pid})-[:POSTULA_A]->(j:Job)
+                OPTIONAL MATCH (e:Company)-[:PUBLICA]->(j)
+                RETURN 
+                    j.id AS jobId,
+                    j.titulo AS titulo,
+                    j.descripcion AS descripcion,
+                    e.id AS empresaId,
+                    e.nombre AS empresaNombre
+                """,
+                pid=person_id
+            )
+            return [dict(r) for r in result]
+
+    def get_applications(self, person_id: str):
+        """
+        Devuelve todos los empleos a los que una persona se postuló.
+        """
+        try:
+            return self.graph_repo.get_jobs_for_person(person_id)
+        except Exception as e:
+            raise Exception(f"Error obteniendo empleos postulados: {e}")

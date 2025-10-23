@@ -89,3 +89,12 @@ class PeopleService:
             }
         except Exception as e:
             raise Exception(f"Error al eliminar conexión: {e}")
+
+    def get_applications(self, person_id: str):
+        """
+        Devuelve todos los empleos a los que una persona se postuló.
+        """
+        try:
+            return self.graph_repo.get_jobs_for_person(person_id)
+        except Exception as e:
+            raise Exception(f"Error obteniendo empleos postulados: {e}")

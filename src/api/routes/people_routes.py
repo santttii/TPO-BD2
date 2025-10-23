@@ -134,3 +134,14 @@ def delete_connection(person_id: str, target_id: str, type: str = Query(None, de
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{person_id}/applications")
+def get_applications(person_id: str):
+    """
+    Devuelve los empleos a los que una persona se postuló.
+    """
+    try:
+        apps = svc.get_applications(person_id)
+        return {"personId": person_id, "applications": apps}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

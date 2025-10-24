@@ -32,20 +32,26 @@ class Neo4jRepository:
                 rol=rol
             )
 
-    def link_person_to_skill(self, person_id: str, skill_name: str):
+    def link_person_to_skill(self, person_id: str, skill_name: str, nivel: int = 1):
         """
-        Crea (si no existe) la relación (:Person)-[:POSEE_HABILIDAD]->(:Skill)
+        Crea un nodo Skill si no existe y vincula la persona con un nivel.
+        Ejemplo: (p)-[:POSEE_HABILIDAD {nivel: 4}]->(s)
         """
         with self.driver.session() as session:
             session.run(
                 """
-                MERGE (p:Person {id: $pid})
                 MERGE (s:Skill {nombre: $skill})
-                MERGE (p)-[:POSEE_HABILIDAD]->(s)
+                WITH s
+                MATCH (p:Person {id: $pid})
+                MERGE (p)-[r:POSEE_HABILIDAD]->(s)
+                SET r.nivel = $nivel
                 """,
                 pid=person_id,
-                skill=skill_name
+                skill=skill_name,
+                nivel=nivel
             )
+            print(f"🔗 Vinculada habilidad '{skill_name}' (nivel {nivel}) con persona {person_id}")
+
 
 
     # ===============================================================
@@ -356,3 +362,19 @@ class Neo4jRepository:
                 job_id=job_id,
                 skill=skill_name
             )
+
+    def get_job_recommendations(self, person_id: str):
+        """
+        Devuelve los empleos más afines según las habilidades del usuario.
+        """
+        query = """
+        MATCH (p:Person {id: $pid})-[:POSEE_HABILIDAD]->(s:Skill)<-[:REQUERIMIENTO_DE]-(j:Job)
+        WITH j, COLLECT(s.nombre) AS habilidadesCoincidentes, COUNT(s) AS afinidad
+        RETURN j.id AS jobId, j.titulo AS titulo, j.empresa AS empresa,
+               habilidadesCoincidentes, afinidad
+        ORDER BY afinidad DESC
+        LIMIT 10
+        """
+        with self.driver.session() as session:
+            result = session.run(query, pid=person_id)
+            return [dict(r) for r in result]

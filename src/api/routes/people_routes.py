@@ -145,3 +145,15 @@ def get_applications(person_id: str):
         return {"personId": person_id, "applications": apps}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/people/{person_id}/recommendations", tags=["People"])
+def get_job_recommendations(person_id: str):
+    """
+    Retorna los empleos más afines según las habilidades de la persona.
+    """
+    try:
+        service = PeopleService()
+        recommendations = service.get_recommendations(person_id)
+        return {"person_id": person_id, "recommendations": recommendations}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -133,3 +133,12 @@ class PeopleService:
             return self.graph_repo.get_jobs_for_person(person_id)
         except Exception as e:
             raise Exception(f"Error obteniendo empleos postulados: {e}")
+    
+    def get_recommendations(self, person_id: str):
+        """
+        Devuelve empleos recomendados según las habilidades de la persona.
+        """
+        try:
+            return self.graph_repo.get_job_recommendations(person_id)
+        except Exception as e:
+            raise Exception(f"Error obteniendo recomendaciones de empleos: {e}")

@@ -438,3 +438,58 @@ class Neo4jRepository:
         with self.driver.session() as session:
             result = session.run(query, skill=skill_name, min_level=min_level)
             return [dict(r) for r in result]
+        
+
+# ===============================================================
+# 📚 MÉTODOS DE CURSOS
+# ===============================================================
+def create_course_node(self, course_id: str, titulo: str, proveedor: str | None = None):
+    q = """
+    MERGE (c:Course {id:$id})
+    SET c.titulo=$titulo, c.proveedor=$proveedor
+    """
+    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
+    with driver.session() as session:
+        session.execute_write(lambda tx: tx.run(q, id=course_id, titulo=titulo, proveedor=proveedor))
+
+def link_course_to_skill(self, course_id: str, skill_name: str, nivelMin: int | None = None):
+    q = """
+    MATCH (c:Course {id:$cid})
+    MERGE (s:Skill {nombre:$sname})
+    MERGE (c)-[r:REQUIERE]->(s)
+    SET r.nivelMin=$nivelMin
+    """
+    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
+    with driver.session() as session:
+        session.execute_write(lambda tx: tx.run(q, cid=course_id, sname=skill_name, nivelMin=nivelMin))
+
+def delete_course_skill_links(self, course_id: str):
+    q = "MATCH (:Course {id:$cid})-[r:REQUIERE]->(:Skill) DELETE r"
+    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
+    with driver.session() as session:
+        session.execute_write(lambda tx: tx.run(q, cid=course_id))
+
+def link_person_to_course(self, person_id: str, course_id: str):
+    q = """
+    MATCH (p:Person {id:$pid}), (c:Course {id:$cid})
+    MERGE (p)-[:INSCRIPTO_EN]->(c)
+    """
+    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
+    with driver.session() as session:
+        session.execute_write(lambda tx: tx.run(q, pid=person_id, cid=course_id))
+
+def mark_course_completed(self, person_id: str, course_id: str, nota: int | None = None):
+    q = """
+    MATCH (p:Person {id:$pid}), (c:Course {id:$cid})
+    MERGE (p)-[r:COMPLETO]->(c)
+    SET r.nota=$nota
+    """
+    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
+    with driver.session() as session:
+        session.execute_write(lambda tx: tx.run(q, pid=person_id, cid=course_id, nota=nota))
+
+def delete_course_node(self, course_id: str):
+    q = "MATCH (c:Course {id:$id}) DETACH DELETE c"
+    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
+    with driver.session() as session:
+        session.execute_write(lambda tx: tx.run(q, id=course_id))

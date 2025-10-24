@@ -15,24 +15,22 @@ class PeopleService:
     def create(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Crea una persona en MongoDB y refleja su nodo + habilidades en Neo4j.
+        Soporta:
+          - "habilidades": ["Python", "Cassandra"]
+          - "perfil.skills": [{"nombre": "python", "nivel": 5}, ...]
         """
         person = self.repo.create(payload)
         person_id = str(person["_id"])
     
-        # 🧠 Extraer las habilidades (pueden venir en distintos lugares)
+        # 🧠 Extraer habilidades en ambos formatos
         habilidades = []
     
-        # Si viene como lista directa: "habilidades": ["Python", "Cassandra"]
         if "habilidades" in payload:
+            # Formato simple: ["Python", "Cassandra"]
             habilidades = payload.get("habilidades", [])
-    
-        # Si viene dentro del perfil como objetos: perfil.skills
         elif "perfil" in payload and "skills" in payload["perfil"]:
-            habilidades = [
-                skill.get("nombre")
-                for skill in payload["perfil"]["skills"]
-                if "nombre" in skill
-            ]
+            # Formato con nivel: [{"nombre": "python", "nivel": 5}, ...]
+            habilidades = payload["perfil"]["skills"]
     
         try:
             # 1️⃣ Crear nodo Persona
@@ -45,18 +43,35 @@ class PeopleService:
                 rol=rol
             )
     
-            # 2️⃣ Vincular habilidades
+            # 2️⃣ Vincular habilidades en Neo4j
             if habilidades:
                 print(f"🧠 Vinculando habilidades: {habilidades}")
                 for skill in habilidades:
-                    self.graph_repo.link_person_to_skill(person_id, skill)
+                    if isinstance(skill, str):
+                        # Si la lista es simple ["Python", "Cassandra"]
+                        self.graph_repo.link_person_to_skill(
+                            person_id=person_id,
+                            skill_name=skill,
+                            nivel=1
+                        )
+                    elif isinstance(skill, dict):
+                        # Si viene como {"nombre": "python", "nivel": 5}
+                        nombre_skill = skill.get("nombre")
+                        nivel = skill.get("nivel", 1)
+                        if nombre_skill:
+                            self.graph_repo.link_person_to_skill(
+                                person_id=person_id,
+                                skill_name=nombre_skill,
+                                nivel=nivel
+                            )
     
         except Exception as e:
             print(f"⚠️ Error sincronizando persona y habilidades en Neo4j: {e}")
     
         person["habilidades"] = habilidades
         return person
-    
+
+
 
     def list(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         return self.repo.find(filters)
@@ -142,3 +157,21 @@ class PeopleService:
             return self.graph_repo.get_job_recommendations(person_id)
         except Exception as e:
             raise Exception(f"Error obteniendo recomendaciones de empleos: {e}")
+
+    def get_skills(self, person_id: str):
+        """
+        Devuelve las habilidades y niveles de una persona desde Neo4j.
+        """
+        try:
+            return self.graph_repo.get_person_skills(person_id)
+        except Exception as e:
+            raise Exception(f"Error obteniendo habilidades: {e}")
+
+    def get_people_by_skill(self, skill_name: str, min_level: int = 1):
+        """
+        Devuelve las personas que tienen una habilidad con un nivel mínimo.
+        """
+        try:
+            return self.graph_repo.get_people_by_skill(skill_name, min_level)
+        except Exception as e:
+            raise Exception(f"Error obteniendo personas por habilidad: {e}")

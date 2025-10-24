@@ -157,3 +157,33 @@ def get_job_recommendations(person_id: str):
         return {"person_id": person_id, "recommendations": recommendations}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{person_id}/skills")
+def get_person_skills(person_id: str):
+    """
+    Obtiene todas las habilidades de una persona (con su nivel) desde Neo4j.
+    """
+    try:
+        skills = svc.get_skills(person_id)
+        return {"personId": person_id, "skills": skills}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+from fastapi import Query
+
+@router.get("/skills/{skill_name}/people")
+def get_people_by_skill(skill_name: str, min_level: int = Query(1, ge=1, le=5, description="Nivel mínimo (1-5)")):
+    """
+    Devuelve todas las personas que poseen la habilidad indicada con un nivel mínimo.
+    Ejemplo: /api/v1/people/skills/Python/people?min_level=3
+    """
+    try:
+        people = svc.get_people_by_skill(skill_name, min_level)
+        return {
+            "skill": skill_name,
+            "min_level": min_level,
+            "count": len(people),
+            "people": people
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,4 +1,4 @@
-version: "3.8"
+version: '3.8'
 
 services:
   # ----------------------------
@@ -92,7 +92,7 @@ services:
     # Cambia 'build: ./app' a 'build: .' si el Dockerfile está en la raíz del proyecto.
     # O usa el objeto 'build' para especificar el contexto y el Dockerfile
     build:
-      context: .
+      context: . 
       dockerfile: Dockerfile
     container_name: tpo-python
     depends_on:
@@ -105,12 +105,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./src:/app/src
+      - ./src:/app/src 
     networks:
       - tpo-network
     # 2. Corregir el comando de inicio para apuntar a la nueva ruta del main.py
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-  # O si usaste un nombre diferente para el punto de entrada, úsalo aquí.
+    command: ["python", "main.py"] # <--- RUTA ACTUALIZADA
+    # O si usaste un nombre diferente para el punto de entrada, úsalo aquí.
 
 # ----------------------------
 # 🔗 Volúmenes persistentes

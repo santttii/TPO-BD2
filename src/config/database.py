@@ -3,77 +3,90 @@ from pymongo import MongoClient
 import redis
 from neo4j import GraphDatabase
 
-# ==================================
-# 🟢 MongoDB Connection Test
-# ==================================
-def probar_mongo():
-    """Prueba la conexión a MongoDB usando la URI y la DB del entorno."""
+# ==============================================================
+# 🟢 MongoDB
+# ==============================================================
+def get_mongo_db():
     uri = os.getenv("MONGO_URI")
-    db_name = os.getenv("MONGO_DATABASE") # <-- Obtener el nombre de la DB
+    db_name = os.getenv("MONGO_DATABASE", "tpo_database")
+
+    client = MongoClient(uri)
+    db = client[db_name]  # ✅ devolvemos la base, no el cliente
+    return db
+
+def probar_mongo():
+    """Prueba de conexión a MongoDB"""
     try:
-        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
-        client.admin.command('ping') 
-        
-        # 🚨 CAMBIO AQUÍ: Conectar directamente a la base de datos nombrada
-        db = client[db_name] 
-        
-        print(f"🟢 Mongo conectado a la base: {db.name}")
-        return client
+        db = get_mongo_db()
+        db.command("ping")
+        print(f"🟢 Conectado a MongoDB → Base: {db.name}")
+        return db
     except Exception as e:
         print(f"❌ Error al conectar a MongoDB: {e}")
         return None
 
-# ==================================
-# 🕸 Neo4j Connection Test
-# ==================================
-def probar_neo4j():
-    """Prueba la conexión a Neo4j usando el driver Bolt."""
-    uri = os.getenv("NEO4J_URI")
-    user = os.getenv("NEO4J_USER")
-    password = os.getenv("NEO4J_PASSWORD")
 
-    driver = GraphDatabase.driver(uri, auth=(user, password))
+# ==============================================================
+# 🕸️ Neo4j
+# ==============================================================
+
+def get_neo4j_driver():
+    """
+    Devuelve el driver de Neo4j.
+    URI de ejemplo (Docker): bolt://neo4j:7687
+    """
+    uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
+    user = os.getenv("NEO4J_USER", "neo4j")
+    password = os.getenv("NEO4J_PASSWORD", "password")
+    return GraphDatabase.driver(uri, auth=(user, password))
+
+
+def probar_neo4j():
+    """Prueba la conexión a Neo4j"""
     try:
+        driver = get_neo4j_driver()
         with driver.session() as session:
-            # Solo probamos la conexión con una consulta simple
             session.run("RETURN 1")
-            print("🕸️ Conectado correctamente a Neo4j.")
+        print("🕸️ Conectado correctamente a Neo4j.")
         return driver
     except Exception as e:
         print(f"❌ Error al conectar a Neo4j: {e}")
         return None
-    finally:
-        # Nota: En una aplicación real, el driver se inicializa una vez 
-        # y no se cierra hasta el apagado de la app.
-        pass # Dejo el cierre fuera para un uso de prueba rápido
 
-# ==================================
-# ⚡ Redis Connection Test
-# ==================================
+
+# ==============================================================
+# ⚡ Redis
+# ==============================================================
+
+def get_redis_client():
+    """
+    Devuelve el cliente Redis.
+    URI típica en Docker: redis://redis:6379/
+    """
+    uri = os.getenv("REDIS_URI", "redis://redis:6379/")
+    return redis.from_url(uri, decode_responses=True)
+
+
 def probar_redis():
-    """Prueba la conexión a Redis e intenta obtener un valor de prueba."""
-    # En tu .env original no incluiste REDIS_URI, pero usaste las vars de Host/Port
-    # Asumo que tu app usa REDIS_URI (que era redis://redis:6379/) o las otras variables.
-    # Si usas REDIS_URI:
-    uri = os.getenv("REDIS_URI")
+    """Prueba de conexión a Redis"""
     try:
-        r = redis.from_url(uri)
-        # Prueba de conexión con PING
-        r.ping() 
-        # Si tienes el valor 'saludo' guardado del ejemplo anterior
-        valor_guardado = r.get('saludo')
-        if valor_guardado:
-            print(f"⚡ Redis conectado. Valor guardado (saludo): {valor_guardado.decode()}")
+        r = get_redis_client()
+        r.ping()
+        valor = r.get("saludo")
+        if valor:
+            print(f"⚡ Redis conectado. Valor guardado (saludo): {valor}")
         else:
-            print("⚡ Redis conectado. No se encontró el valor de prueba 'saludo'.")
+            print("⚡ Redis conectado correctamente.")
         return r
     except Exception as e:
         print(f"❌ Error al conectar a Redis: {e}")
         return None
 
-# ==================================
-# Función de prueba principal
-# ==================================
+
+# ==============================================================
+# 🚀 Inicialización General
+# ==============================================================
+
 def inicializar_conexiones():
     """Llama a todas las funciones de prueba de conexión."""
     print("\n--- Probando Conexiones a Bases de Datos ---")
@@ -81,7 +94,3 @@ def inicializar_conexiones():
     probar_neo4j()
     probar_redis()
     print("--------------------------------------------\n")
-
-if __name__ == "__main__":
-    # Esto permite ejecutar el archivo directamente para probar
-    inicializar_conexiones()

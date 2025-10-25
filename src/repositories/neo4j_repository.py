@@ -165,6 +165,8 @@ class Neo4jRepository:
         with self.driver.session() as session:
             result = session.run(query, id=person_id)
             return [dict(r) for r in result]
+        
+
     def delete_connection(self, source_id: str, target_id: str, tipo: str = None):
         """
         Elimina una conexión (o todas) entre dos personas.
@@ -438,58 +440,93 @@ class Neo4jRepository:
         with self.driver.session() as session:
             result = session.run(query, skill=skill_name, min_level=min_level)
             return [dict(r) for r in result]
-        
 
-# ===============================================================
-# 📚 MÉTODOS DE CURSOS
-# ===============================================================
-def create_course_node(self, course_id: str, titulo: str, proveedor: str | None = None):
-    q = """
-    MERGE (c:Course {id:$id})
-    SET c.titulo=$titulo, c.proveedor=$proveedor
-    """
-    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
-    with driver.session() as session:
-        session.execute_write(lambda tx: tx.run(q, id=course_id, titulo=titulo, proveedor=proveedor))
+    # ===============================================================
+    # 📚 MÉTODOS DE CURSOS (sin lambda, sin execute_write)
+    # ===============================================================
 
-def link_course_to_skill(self, course_id: str, skill_name: str, nivelMin: int | None = None):
-    q = """
-    MATCH (c:Course {id:$cid})
-    MERGE (s:Skill {nombre:$sname})
-    MERGE (c)-[r:REQUIERE]->(s)
-    SET r.nivelMin=$nivelMin
-    """
-    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
-    with driver.session() as session:
-        session.execute_write(lambda tx: tx.run(q, cid=course_id, sname=skill_name, nivelMin=nivelMin))
+    def create_course_node(self, course_id: str, titulo: str, proveedor: str | None = None):
+        q = """
+        MERGE (c:Course {id:$id})
+        SET c.titulo=$titulo, c.proveedor=$proveedor
+        """
+        with self.driver.session() as session:
+            session.run(q, id=course_id, titulo=titulo, proveedor=proveedor).consume()
 
-def delete_course_skill_links(self, course_id: str):
-    q = "MATCH (:Course {id:$cid})-[r:REQUIERE]->(:Skill) DELETE r"
-    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
-    with driver.session() as session:
-        session.execute_write(lambda tx: tx.run(q, cid=course_id))
+    def link_course_to_skill(self, course_id: str, skill_name: str, nivelMin: int | None = None):
+        q = """
+        MATCH (c:Course {id:$cid})
+        MERGE (s:Skill {nombre:$sname})
+        MERGE (c)-[r:REQUIERE]->(s)
+        SET r.nivelMin=$nivelMin
+        """
+        with self.driver.session() as session:
+            session.run(q, cid=course_id, sname=skill_name, nivelMin=nivelMin).consume()
 
-def link_person_to_course(self, person_id: str, course_id: str):
-    q = """
-    MATCH (p:Person {id:$pid}), (c:Course {id:$cid})
-    MERGE (p)-[:INSCRIPTO_EN]->(c)
-    """
-    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
-    with driver.session() as session:
-        session.execute_write(lambda tx: tx.run(q, pid=person_id, cid=course_id))
+    def delete_course_skill_links(self, course_id: str):
+        q = "MATCH (:Course {id:$cid})-[r:REQUIERE]->(:Skill) DELETE r"
+        with self.driver.session() as session:
+            session.run(q, cid=course_id).consume()
+        logging.info(f"🔗 Relaciones REQUIERE eliminadas para course {course_id}")
 
-def mark_course_completed(self, person_id: str, course_id: str, nota: int | None = None):
-    q = """
-    MATCH (p:Person {id:$pid}), (c:Course {id:$cid})
-    MERGE (p)-[r:COMPLETO]->(c)
-    SET r.nota=$nota
-    """
-    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
-    with driver.session() as session:
-        session.execute_write(lambda tx: tx.run(q, pid=person_id, cid=course_id, nota=nota))
+    def link_person_to_course(self, person_id: str, course_id: str):
+        q = """
+        MATCH (p:Person {id:$pid}), (c:Course {id:$cid})
+        MERGE (p)-[:INSCRIPTO_EN]->(c)
+        """
+        with self.driver.session() as session:
+            session.run(q, pid=person_id, cid=course_id).consume()
 
-def delete_course_node(self, course_id: str):
-    q = "MATCH (c:Course {id:$id}) DETACH DELETE c"
-    driver = getattr(self, "driver", None) or getattr(self, "_driver", None)
-    with driver.session() as session:
-        session.execute_write(lambda tx: tx.run(q, id=course_id))
+    def delete_course_node(self, course_id: str):
+        q = "MATCH (c:Course {id:$id}) DETACH DELETE c"
+        with self.driver.session() as session:
+            session.run(q, id=course_id).consume()
+        logging.info(f"🗑️ Nodo Course eliminado: {course_id}")
+
+    # --- RELACIÓN DE INSCRIPCIÓN CON PROPIEDADES ---
+
+    # -- Crear/actualizar relación con props (una sola relación) --
+    def upsert_inscripcion(self, person_id: str, course_id: str,
+                        progreso: int = 0, estado: str = "No empezó",
+                        nota: int | None = None, certificacionUrl: str | None = None):
+        q = """
+        MATCH (p:Person {id:$pid}), (c:Course {id:$cid})
+        MERGE (p)-[r:INSCRIPTO_EN]->(c)
+        SET r.progreso   = coalesce($progreso, r.progreso, 0),
+            r.estado     = coalesce($estado,   r.estado,   'No empezó'),
+            r.updatedAt  = datetime()
+        FOREACH (_ IN CASE WHEN $nota IS NULL THEN [] ELSE [1] END | SET r.nota = $nota)
+        FOREACH (_ IN CASE WHEN $certUrl IS NULL THEN [] ELSE [1] END | SET r.certificacionUrl = $certUrl)
+        """
+        with self.driver.session() as session:
+            session.run(q, pid=str(person_id), cid=str(course_id),
+                        progreso=int(progreso), estado=str(estado),
+                        nota=nota, certUrl=certificacionUrl).consume()
+
+    def set_inscripcion_progreso(self, person_id: str, course_id: str, progreso: int):
+        q = """
+        MATCH (p:Person {id:$pid})-[r:INSCRIPTO_EN]->(c:Course {id:$cid})
+        SET r.progreso  = $progreso,
+            r.estado    = CASE
+                            WHEN $progreso >= 100 THEN 'Completado'
+                            WHEN $progreso > 0 THEN 'Cursando'
+                            ELSE 'No empezó'
+                        END,
+            r.updatedAt = datetime()
+        """
+        with self.driver.session() as session:
+            session.run(q, pid=str(person_id), cid=str(course_id), progreso=int(progreso)).consume()
+
+    def set_inscripcion_completa(self, person_id: str, course_id: str,
+                                nota: int | None = None, certificacionUrl: str | None = None):
+        q = """
+        MATCH (p:Person {id:$pid})-[r:INSCRIPTO_EN]->(c:Course {id:$cid})
+        SET r.estado     = 'Completado',
+            r.progreso   = 100,
+            r.updatedAt  = datetime()
+        FOREACH (_ IN CASE WHEN $nota IS NULL THEN [] ELSE [1] END | SET r.nota = $nota)
+        FOREACH (_ IN CASE WHEN $certUrl IS NULL THEN [] ELSE [1] END | SET r.certificacionUrl = $certUrl)
+        """
+        with self.driver.session() as session:
+            session.run(q, pid=str(person_id), cid=str(course_id),
+                        nota=nota, certUrl=certificacionUrl).consume()

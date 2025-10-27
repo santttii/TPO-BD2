@@ -2,9 +2,11 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime
 
+
 class Skill(BaseModel):
     nombre: str
     nivel: int
+
 
 class Experiencia(BaseModel):
     empresa: str
@@ -12,14 +14,17 @@ class Experiencia(BaseModel):
     desde: str
     hasta: Optional[str] = None
 
+
 class Educacion(BaseModel):
     institucion: str
     titulo: str
     desde: int
     hasta: Optional[int] = None
 
+
 # Payload de creación/actualización
 class PersonIn(BaseModel):
+    userId: Optional[str] = None  # 👈 vínculo con el usuario autenticado
     correo: str
     rol: str
     datosPersonales: Dict
@@ -29,6 +34,7 @@ class PersonIn(BaseModel):
     intereses: List[str] = []
     conexiones: List[str] = []
     empresaActualId: Optional[str] = None
+
 
 # Respuesta al cliente (incluye _id y timestamps)
 class PersonOut(PersonIn):

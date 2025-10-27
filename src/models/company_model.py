@@ -8,6 +8,8 @@ class CompanyIn(BaseModel):
     industria: str
     pais: str
     ciudad: str
+    # 👇 se agrega el campo (no obligatorio para requests)
+    created_by: Optional[str] = None
 
 class CompanyOut(CompanyIn):
     id: Optional[str] = Field(default=None, alias="_id")

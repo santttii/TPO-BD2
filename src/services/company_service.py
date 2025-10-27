@@ -14,10 +14,14 @@ class CompanyService:
     # 🏗️ CREATE
     # ===============================================================
     def create(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Crea una empresa en Mongo y su nodo en Neo4j.
+        El payload debe incluir 'created_by' (user_id) desde el router.
+        """
         company = self.repo.create(payload)
         company["_id"] = str(company["_id"])
 
-        # Sincronizar en Neo4j
+        # Crear nodo en Neo4j
         try:
             self.graph_repo.create_company_node(
                 company_id=company["_id"],
@@ -30,37 +34,43 @@ class CompanyService:
         return company
 
     # ===============================================================
-    # 📋 LIST (GET all)
+    # 📋 LIST (solo empresas del usuario)
     # ===============================================================
-    def list(self, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        companies = self.repo.find(filters or {})
+    def list(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Retorna las empresas creadas por el usuario autenticado.
+        """
+        companies = self.repo.find({"created_by": user_id})
         for c in companies:
             c["_id"] = str(c["_id"])
         return companies
 
     # ===============================================================
-    # 🔎 GET BY ID
+    # 🔎 GET BY ID (solo si es dueño)
     # ===============================================================
-    def get(self, company_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, company_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         company = self.repo.find_one(company_id)
         if company:
             company["_id"] = str(company["_id"])
+            if user_id and company.get("created_by") != user_id:
+                raise PermissionError("Not authorized to access this company")
         return company
 
     # ===============================================================
-    # ✏️ UPDATE
+    # ✏️ UPDATE (solo si es dueño)
     # ===============================================================
-    def update(self, company_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Actualiza los campos indicados de una empresa.
-        Ejemplo:
-            PUT /companies/68f96...  con body {"pais": "Uruguay"}
-        """
+    def update(self, company_id: str, updates: Dict[str, Any], user_id: str) -> Optional[Dict[str, Any]]:
+        company = self.repo.find_one(company_id)
+        if not company:
+            return None
+        if company.get("created_by") != user_id:
+            raise PermissionError("Not authorized to modify this company")
+
         updated = self.repo.update(company_id, updates)
         if updated:
             updated["_id"] = str(updated["_id"])
 
-            # Si cambian datos clave, actualizar también en Neo4j
+            # Actualizar también en Neo4j si cambia nombre o industria
             try:
                 nombre = updates.get("nombre", updated.get("nombre", ""))
                 industria = updates.get("industria", updated.get("industria", ""))
@@ -71,16 +81,18 @@ class CompanyService:
         return updated
 
     # ===============================================================
-    # 🗑️ DELETE
+    # 🗑️ DELETE (solo si es dueño)
     # ===============================================================
-    def delete(self, company_id: str) -> bool:
-        """
-        Elimina una empresa por ID (Mongo). En Neo4j podrías eliminar su nodo también.
-        """
+    def delete(self, company_id: str, user_id: str) -> bool:
+        company = self.repo.find_one(company_id)
+        if not company:
+            return False
+        if company.get("created_by") != user_id:
+            raise PermissionError("Not authorized to delete this company")
+
         deleted = self.repo.delete(company_id)
         if deleted:
             try:
-                # Eliminamos nodo de Neo4j también
                 self.graph_repo.delete_node_by_id(company_id, label="Company")
             except Exception as e:
                 print(f"⚠️ Error eliminando nodo Company en Neo4j: {e}")

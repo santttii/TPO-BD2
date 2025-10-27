@@ -19,13 +19,32 @@ class MongoRepository:
         return doc
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        # timestamps por defecto
         now = datetime.utcnow()
         data.setdefault("versionActual", 1)
         data.setdefault("creadoEn", now)
         data.setdefault("actualizadoEn", now)
+
+        # 👇 Si vino _id, upsert con ese _id (conversión a ObjectId si corresponde)
+        _id = data.get("_id")
+        if _id is not None:
+            # Convertir _id str → ObjectId si parece un hex de 24 chars
+            if isinstance(_id, str) and len(_id) == 24:
+                try:
+                    _id = ObjectId(_id)
+                    data["_id"] = _id
+                except Exception:
+                    pass  # si no convierte, lo deja como vino (Mongo también acepta str como _id)
+
+            self.col.replace_one({"_id": _id}, data, upsert=True)
+            created = self.col.find_one({"_id": _id})
+            return self._stringify_id(created)
+
+    # 👇 Sin _id → insert normal
         res = self.col.insert_one(data)
         created = self.col.find_one({"_id": res.inserted_id})
         return self._stringify_id(created)
+
 
     def find_one(self, _id: str) -> Optional[Dict[str, Any]]:
         doc = self.col.find_one({"_id": ObjectId(_id)})

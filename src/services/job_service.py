@@ -12,22 +12,27 @@ class JobService:
     # 🏗️ CREATE
     # ===============================================================
     def create(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        job = self.repo.create(payload)
-        job_id = str(job["_id"])
-
-        try:
-            # Crear nodo Job en Neo4j
-            self.graph_repo.create_job_node(
-                job_id=job_id,
-                titulo=payload["titulo"],
-                empresa_id=payload["empresaId"]
-            )
-        except Exception as e:
-            print(f"⚠️ Error creando nodo Job en Neo4j: {e}")
-
-        job["_id"] = job_id
-        return job
-
+       job = self.repo.create(payload)
+       job_id = str(job["_id"])
+       try:
+           # 1️⃣ Crear nodo Job
+           self.graph_repo.create_job_node(
+               job_id=job_id,
+               titulo=payload["titulo"],
+               empresa_id=payload["empresaId"]
+           )
+           # 2️⃣ Crear relaciones con Skills
+           requisitos = payload.get("requisitos", {})
+           obligatorios = requisitos.get("obligatorios", [])
+           deseables = requisitos.get("deseables", [])
+           for skill in obligatorios:
+               self.graph_repo.link_job_to_skill(job_id, skill, tipo="REQUERIMIENTO_DE")
+           for skill in deseables:
+               self.graph_repo.link_job_to_skill(job_id, skill, tipo="DESEA")
+       except Exception as e:
+           print(f"⚠️ Error creando nodo Job y relaciones en Neo4j: {e}")
+       job["_id"] = job_id
+       return job
     # ===============================================================
     # 📋 LIST
     # ===============================================================

@@ -14,20 +14,45 @@ class Neo4jRepository:
         self.driver = get_neo4j_driver()
 
     # ===============================================================
-    # 👤 CREAR NODO PERSONA
+    # 👤 Crear nodo Person y vincular habilidades
     # ===============================================================
-    def create_person_node(self, person_id: str, name: str, role: str):
+    def create_person_node(self, person_id: str, nombre: str, rol: str):
+        """
+        Crea (si no existe) el nodo de Persona en Neo4j.
+        """
         with self.driver.session() as session:
             session.run(
                 """
-                MERGE (p:Person {id: $id})
-                SET p.nombre = $name, p.rol = $role
+                MERGE (p:Person {id: $pid})
+                SET p.nombre = $nombre,
+                    p.rol = $rol
                 """,
-                id=person_id,
-                name=name,
-                role=role
+                pid=person_id,
+                nombre=nombre,
+                rol=rol
             )
-            logging.info(f"🧍 Nodo Person creado o actualizado: {name} ({role})")
+
+    def link_person_to_skill(self, person_id: str, skill_name: str, nivel: int = 1):
+        """
+        Crea un nodo Skill si no existe y vincula la persona con un nivel.
+        Ejemplo: (p)-[:POSEE_HABILIDAD {nivel: 4}]->(s)
+        """
+        with self.driver.session() as session:
+            session.run(
+                """
+                MERGE (s:Skill {nombre: $skill})
+                WITH s
+                MATCH (p:Person {id: $pid})
+                MERGE (p)-[r:POSEE_HABILIDAD]->(s)
+                SET r.nivel = $nivel
+                """,
+                pid=person_id,
+                skill=skill_name,
+                nivel=nivel
+            )
+            print(f"🔗 Vinculada habilidad '{skill_name}' (nivel {nivel}) con persona {person_id}")
+
+
 
     # ===============================================================
     # 🔗 CONEXIÓN UNIDIRECCIONAL
@@ -140,6 +165,8 @@ class Neo4jRepository:
         with self.driver.session() as session:
             result = session.run(query, id=person_id)
             return [dict(r) for r in result]
+        
+
     def delete_connection(self, source_id: str, target_id: str, tipo: str = None):
         """
         Elimina una conexión (o todas) entre dos personas.
@@ -318,3 +345,188 @@ class Neo4jRepository:
             return self.graph_repo.get_jobs_for_person(person_id)
         except Exception as e:
             raise Exception(f"Error obteniendo empleos postulados: {e}")
+
+    # ===============================================================
+    # 🧩 VINCULAR JOB A SKILLS (obligatorias o deseables)
+    # ===============================================================
+    def link_job_to_skill(self, job_id: str, skill_name: str, tipo: str):
+        """
+        Crea o vincula una habilidad al Job según tipo de requisito.
+        tipo puede ser: 'REQUERIMIENTO_DE' o 'DESEA'
+        """
+        with self.driver.session() as session:
+            session.run(
+                f"""
+                MATCH (j:Job {{id: $job_id}})
+                MERGE (s:Skill {{nombre: $skill}})
+                MERGE (j)-[r:{tipo}]->(s)
+                """,
+                job_id=job_id,
+                skill=skill_name
+            )
+
+
+    def get_job_recommendations(self, person_id: str, limit: int = 10):
+        """
+        Devuelve empleos compatibles con una persona según sus habilidades y nivel.
+        Soporta relaciones:
+          - (:Job)-[:REQUERIMIENTO_DE]->(:Skill)
+          - (:Job)-[:DESEA]->(:Skill)
+          - (:Person)-[:POSEE_HABILIDAD]->(:Skill)
+        Además devuelve las habilidades coincidentes.
+        """
+        query = """
+        // 1️⃣ Buscar relaciones entre la persona y los skills que los jobs requieren o desean
+        MATCH (p:Person {id: $pid})-[r:POSEE_HABILIDAD]->(s:Skill)
+        OPTIONAL MATCH (s)<-[rel1:REQUERIMIENTO_DE]-(job:Job)
+        OPTIONAL MATCH (s)<-[rel2:DESEA]-(job)
+        
+        // 2️⃣ Calcular los puntajes parciales
+        WITH p, job, s,
+             COALESCE(r.nivel, 1) AS nivelPersona,
+             CASE WHEN rel1 IS NOT NULL THEN 2.0 ELSE 0 END AS pesoReq,
+             CASE WHEN rel2 IS NOT NULL THEN 1.0 ELSE 0 END AS pesoDesea
+             
+        // 3️⃣ Calcular score total por job
+        WITH job, COLLECT(s.nombre) AS habilidadesCoincidentes,
+             SUM(nivelPersona * (pesoReq + pesoDesea)) AS afinidad
+        WHERE job IS NOT NULL AND afinidad > 0
+        
+        RETURN job.id AS jobId,
+               job.titulo AS titulo,
+               job.descripcion AS descripcion,
+               habilidadesCoincidentes,
+               ROUND(afinidad, 2) AS score
+        ORDER BY score DESC
+        LIMIT $limit
+        """
+        with self.driver.session() as session:
+            result = session.run(query, pid=person_id, limit=limit)
+            return [record.data() for record in result]
+    
+    def get_person_skills(self, person_id: str):
+        """
+        Devuelve todas las habilidades de una persona con su nivel.
+        Ejemplo:
+        [
+          {"nombre": "Python", "nivel": 5},
+          {"nombre": "Pytorch", "nivel": 4}
+        ]
+        """
+        query = """
+        MATCH (p:Person {id: $pid})-[r:POSEE_HABILIDAD]->(s:Skill)
+        RETURN s.nombre AS nombre, r.nivel AS nivel
+        ORDER BY r.nivel DESC
+        """
+        with self.driver.session() as session:
+            result = session.run(query, pid=person_id)
+            return [dict(r) for r in result]
+
+    def get_people_by_skill(self, skill_name: str, min_level: int = 1):
+        """
+        Devuelve todas las personas que poseen una habilidad (≥ nivel indicado).
+        Ejemplo:
+        [
+          {"personId": "68fab69cb39d7b7931f7ab12", "nombre": "Carla Gómez", "rol": "Data Scientist", "nivel": 5},
+          {"personId": "68fab69cb39d7b7931f7ab13", "nombre": "Rodrigo Alcaraz", "rol": "Backend Dev", "nivel": 3}
+        ]
+        """
+        query = """
+        MATCH (p:Person)-[r:POSEE_HABILIDAD]->(s:Skill {nombre: $skill})
+        WHERE r.nivel >= $min_level
+        RETURN p.id AS personId, p.nombre AS nombre, p.rol AS rol, r.nivel AS nivel
+        ORDER BY r.nivel DESC
+        """
+        with self.driver.session() as session:
+            result = session.run(query, skill=skill_name, min_level=min_level)
+            return [dict(r) for r in result]
+
+    # ===============================================================
+    # 📚 MÉTODOS DE CURSOS (sin lambda, sin execute_write)
+    # ===============================================================
+
+    def create_course_node(self, course_id: str, titulo: str, proveedor: str | None = None):
+        q = """
+        MERGE (c:Course {id:$id})
+        SET c.titulo=$titulo, c.proveedor=$proveedor
+        """
+        with self.driver.session() as session:
+            session.run(q, id=course_id, titulo=titulo, proveedor=proveedor).consume()
+
+    def link_course_to_skill(self, course_id: str, skill_name: str, nivelMin: int | None = None):
+        q = """
+        MATCH (c:Course {id:$cid})
+        MERGE (s:Skill {nombre:$sname})
+        MERGE (c)-[r:REQUIERE]->(s)
+        SET r.nivelMin=$nivelMin
+        """
+        with self.driver.session() as session:
+            session.run(q, cid=course_id, sname=skill_name, nivelMin=nivelMin).consume()
+
+    def delete_course_skill_links(self, course_id: str):
+        q = "MATCH (:Course {id:$cid})-[r:REQUIERE]->(:Skill) DELETE r"
+        with self.driver.session() as session:
+            session.run(q, cid=course_id).consume()
+        logging.info(f"🔗 Relaciones REQUIERE eliminadas para course {course_id}")
+
+    def link_person_to_course(self, person_id: str, course_id: str):
+        q = """
+        MATCH (p:Person {id:$pid}), (c:Course {id:$cid})
+        MERGE (p)-[:INSCRIPTO_EN]->(c)
+        """
+        with self.driver.session() as session:
+            session.run(q, pid=person_id, cid=course_id).consume()
+
+    def delete_course_node(self, course_id: str):
+        q = "MATCH (c:Course {id:$id}) DETACH DELETE c"
+        with self.driver.session() as session:
+            session.run(q, id=course_id).consume()
+        logging.info(f"🗑️ Nodo Course eliminado: {course_id}")
+
+    # --- RELACIÓN DE INSCRIPCIÓN CON PROPIEDADES ---
+
+    # -- Crear/actualizar relación con props (una sola relación) --
+    def upsert_inscripcion(self, person_id: str, course_id: str,
+                        progreso: int = 0, estado: str = "No empezó",
+                        nota: int | None = None, certificacionUrl: str | None = None):
+        q = """
+        MATCH (p:Person {id:$pid}), (c:Course {id:$cid})
+        MERGE (p)-[r:INSCRIPTO_EN]->(c)
+        SET r.progreso   = coalesce($progreso, r.progreso, 0),
+            r.estado     = coalesce($estado,   r.estado,   'No empezó'),
+            r.updatedAt  = datetime()
+        FOREACH (_ IN CASE WHEN $nota IS NULL THEN [] ELSE [1] END | SET r.nota = $nota)
+        FOREACH (_ IN CASE WHEN $certUrl IS NULL THEN [] ELSE [1] END | SET r.certificacionUrl = $certUrl)
+        """
+        with self.driver.session() as session:
+            session.run(q, pid=str(person_id), cid=str(course_id),
+                        progreso=int(progreso), estado=str(estado),
+                        nota=nota, certUrl=certificacionUrl).consume()
+
+    def set_inscripcion_progreso(self, person_id: str, course_id: str, progreso: int):
+        q = """
+        MATCH (p:Person {id:$pid})-[r:INSCRIPTO_EN]->(c:Course {id:$cid})
+        SET r.progreso  = $progreso,
+            r.estado    = CASE
+                            WHEN $progreso >= 100 THEN 'Completado'
+                            WHEN $progreso > 0 THEN 'Cursando'
+                            ELSE 'No empezó'
+                        END,
+            r.updatedAt = datetime()
+        """
+        with self.driver.session() as session:
+            session.run(q, pid=str(person_id), cid=str(course_id), progreso=int(progreso)).consume()
+
+    def set_inscripcion_completa(self, person_id: str, course_id: str,
+                                nota: int | None = None, certificacionUrl: str | None = None):
+        q = """
+        MATCH (p:Person {id:$pid})-[r:INSCRIPTO_EN]->(c:Course {id:$cid})
+        SET r.estado     = 'Completado',
+            r.progreso   = 100,
+            r.updatedAt  = datetime()
+        FOREACH (_ IN CASE WHEN $nota IS NULL THEN [] ELSE [1] END | SET r.nota = $nota)
+        FOREACH (_ IN CASE WHEN $certUrl IS NULL THEN [] ELSE [1] END | SET r.certificacionUrl = $certUrl)
+        """
+        with self.driver.session() as session:
+            session.run(q, pid=str(person_id), cid=str(course_id),
+                        nota=nota, certUrl=certificacionUrl).consume()

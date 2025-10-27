@@ -12,6 +12,7 @@ from src.api.routes.auth_routes import router as auth_router
 from src.api.middleware.session_middleware import session_middleware
 from src.api.routes.course_routes import router as course_router
 from src.api.routes.enrollment_routes import router as enrollment_router
+from src.api.routes.application_routes import router as application_router
 
 load_dotenv()
 
@@ -36,6 +37,7 @@ app.include_router(job_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(course_router, prefix="/api/v1")
 app.include_router(enrollment_router, prefix="/api/v1")
+app.include_router(application_router, prefix="/api/v1")
 
 
 if __name__ == "__main__":

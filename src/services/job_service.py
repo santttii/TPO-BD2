@@ -1,4 +1,5 @@
 from typing import Dict, Any, List, Optional
+from datetime import datetime
 from src.repositories.mongo_repository import MongoRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 
@@ -7,6 +8,7 @@ class JobService:
     def __init__(self):
         self.repo = MongoRepository("jobs")
         self.graph_repo = Neo4jRepository()
+        self.applications_repo = MongoRepository("applications")
 
     # ===============================================================
     # 🏗️ CREATE
@@ -33,6 +35,7 @@ class JobService:
             print(f"⚠️ Error creando nodo Job y relaciones en Neo4j: {e}")
         job["_id"] = job_id
         return job
+
     # ===============================================================
     # 📋 LIST
     # ===============================================================
@@ -64,16 +67,10 @@ class JobService:
         # Sincronizar requisitos con Neo4j si cambiaron
         try:
             if "requisitos" in updates:
-                # eliminar links previos y volver a crear según updated
-                try:
-                    self.graph_repo.delete_job_skill_links(job_id)
-                except Exception:
-                    pass
-
+                self.graph_repo.delete_job_skill_links(job_id)
                 requisitos = updated.get("requisitos", {})
                 obligatorios = requisitos.get("obligatorios", []) if isinstance(requisitos, dict) else []
                 deseables = requisitos.get("deseables", []) if isinstance(requisitos, dict) else []
-
                 for skill in obligatorios:
                     self.graph_repo.link_job_to_skill(job_id, skill, tipo="REQUERIMIENTO_DE")
                 for skill in deseables:
@@ -106,98 +103,72 @@ class JobService:
     # ===============================================================
     def apply(self, person_id: str, job_id: str) -> Dict[str, Any]:
         """
-        Crea una relación de postulación entre una persona y un empleo.
+        Crea la relación SE_POSTULO en Neo4j y un registro de Application en MongoDB.
         """
         try:
-            # 1) Asegurarnos de que el nodo Job exista en Neo4j. Si no existe,
-            # intentar crearlo a partir del documento en Mongo.
-            try:
-                job_exists = self.graph_repo.node_exists("Job", job_id)
-            except Exception:
-                job_exists = False
-
-            if not job_exists:
-                job_doc = None
-                try:
-                    job_doc = self.repo.find_one(job_id)
-                except Exception:
-                    job_doc = None
-
-                if job_doc:
-                    titulo = job_doc.get("titulo", "Sin Titulo")
-                    empresa_id = job_doc.get("empresaId")
-                    try:
-                        self.graph_repo.create_job_node(job_id=job_id, titulo=titulo, empresa_id=empresa_id)
-                    except Exception as e:
-                        print(f"⚠️ Error creando Job en Neo4j: {e}")
-
-            # Re-check
+            # 🔹 1) Validar existencia del Job
             if not self.graph_repo.node_exists("Job", job_id):
-                raise Exception(f"Job node {job_id} no existe en Neo4j y no pudo crearse")
+                job_doc = self.repo.find_one(job_id)
+                if not job_doc:
+                    raise Exception("Job no encontrado en MongoDB")
+                self.graph_repo.create_job_node(
+                    job_id=job_id,
+                    titulo=job_doc.get("titulo", "Sin Título"),
+                    empresa_id=job_doc.get("empresaId")
+                )
 
-            # 2) Asegurarnos de que exista el nodo Person en Neo4j. Si no, intentar
-            # reconstruirlo desde la colección `people` en Mongo.
+            # 🔹 2) Localizar persona en Mongo (aceptamos person_id como userId o como _id)
+            people_repo = MongoRepository("people")
+            person_doc = None
             try:
-                person_exists = self.graph_repo.node_exists("Person", person_id)
+                # 1) Intentar como _id (find_one espera _id)
+                person_doc = people_repo.find_one(person_id)
             except Exception:
-                person_exists = False
-
-            if not person_exists:
-                people_repo = MongoRepository("people")
                 person_doc = None
-                # Buscar por userId
-                try:
-                    found = people_repo.find({"userId": person_id})
-                    if found:
-                        person_doc = found[0]
-                except Exception:
-                    person_doc = None
 
-                # Si no se encontró, intentar por _id
-                if not person_doc:
-                    try:
-                        person_doc = people_repo.find_one(person_id)
-                    except Exception:
-                        person_doc = None
+            if not person_doc:
+                # 2) Intentar encontrar por userId
+                found = people_repo.find({"userId": person_id})
+                if found:
+                    person_doc = found[0]
 
-                if person_doc:
-                    node_id = person_doc.get("userId") or person_doc.get("_id")
-                    node_id = str(node_id)
-                    nombre = person_doc.get("datosPersonales", {}).get("nombre", "Desconocido")
-                    rol = person_doc.get("rol", "Sin Rol")
-                    try:
-                        self.graph_repo.create_person_node(person_id=node_id, nombre=nombre, rol=rol)
+            if not person_doc:
+                raise Exception("Persona no encontrada en MongoDB")
 
-                        # Vincular habilidades si existieran
-                        habilidades = []
-                        if "habilidades" in person_doc:
-                            habilidades = person_doc.get("habilidades", [])
-                        elif "perfil" in person_doc and "skills" in person_doc["perfil"]:
-                            habilidades = person_doc["perfil"]["skills"]
+            # Determinar nodo id que usamos en Neo4j (preferir userId si está)
+            node_person_id = person_doc.get("userId") or str(person_doc.get("_id"))
+            nombre = person_doc.get("datosPersonales", {}).get("nombre", "Desconocido")
+            rol = person_doc.get("rol", "Sin Rol")
 
-                        for skill in habilidades:
-                            if isinstance(skill, str):
-                                self.graph_repo.link_person_to_skill(node_id, skill, nivel=1)
-                            elif isinstance(skill, dict):
-                                nombre_skill = skill.get("nombre")
-                                nivel = skill.get("nivel", 1)
-                                if nombre_skill:
-                                    self.graph_repo.link_person_to_skill(node_id, nombre_skill, nivel=nivel)
+            # Si el nodo Person no existe en Neo4j, crearlo
+            if not self.graph_repo.node_exists("Person", node_person_id):
+                self.graph_repo.create_person_node(person_id=node_person_id, nombre=nombre, rol=rol)
 
-                        # Usar el node_id real para la postulación
-                        person_id = node_id
-                    except Exception as e:
-                        print(f"⚠️ Error creando Person node en Neo4j: {e}")
+            # 🔹 3) Crear relación SE_POSTULO en Neo4j usando el node id
+            self.graph_repo.apply_to_job(node_person_id, job_id)
 
-            # 3) Finalmente crear la relación POSTULA_A
-            self.graph_repo.apply_to_job(person_id, job_id)
+            # 🔹 4) Registrar la postulación en MongoDB usando el person _id (string)
+            #    y también guardar el person_user_id (userId) si existe. Mantener ambos
+            #    campos evita romper consultas y facilita migraciones.
+            person_mongo_id = str(person_doc.get("_id"))
+            person_user_id = person_doc.get("userId")
+            data = {
+                "person_id": person_mongo_id,
+                "person_user_id": person_user_id,
+                "job_id": job_id,
+                "estado": "postulado",
+                "creadoEn": datetime.utcnow(),
+                "actualizadoEn": datetime.utcnow()
+            }
+            application = self.applications_repo.create(data)
 
             return {
-                "message": f"Persona {person_id} postulada al Job {job_id}",
-                "personId": person_id,
-                "jobId": job_id
+                "message": f"Persona {person_id} se postuló al job {job_id}",
+                "person_id": person_id,
+                "job_id": job_id,
+                "application_id": str(application["_id"]),
+                "estado": "postulado"
             }
 
         except Exception as e:
-            raise Exception(f"Error creando relación POSTULA_A: {e}")
-
+            raise Exception(f"Error creando postulación: {e}")

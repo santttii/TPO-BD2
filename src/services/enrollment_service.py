@@ -1,3 +1,5 @@
+# -------------------- API --------------------
+
 # src/services/enrollment_service.py
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -9,43 +11,6 @@ from src.repositories.neo4j_repository import Neo4jRepository
 
 
 class EnrollmentService:
-    def __init__(self):
-        self.repo = MongoRepository("enrollments")
-        self.people = MongoRepository("people")
-        self.courses = MongoRepository("courses")
-        self.graph = Neo4jRepository()
-        try:
-            # índices útiles (si ya existen, ignora)
-            self.repo.col.create_index([("personId", 1), ("courseId", 1)], unique=True)
-            self.repo.col.create_index("personId")
-        except Exception:
-            pass
-
-    def _now(self) -> str:
-        return datetime.utcnow().isoformat()
-
-    def _clean(self, doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        if not doc:
-            return None
-        d = dict(doc)
-        # tu repo ya suele “stringificar”, pero por las dudas:
-        if "_id" in d:
-            d["id"] = str(d.pop("_id"))
-        return d
-
-    # -------------------- API --------------------
-
-    # src/services/enrollment_service.py
-    from typing import Any, Dict, List, Optional
-    from datetime import datetime
-    import logging
-    from bson import ObjectId
-
-    from src.repositories.mongo_repository import MongoRepository
-    from src.repositories.neo4j_repository import Neo4jRepository
-
-
-    class EnrollmentService:
         def __init__(self):
             self.repo = MongoRepository("enrollments")
             self.people = MongoRepository("people")

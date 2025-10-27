@@ -20,7 +20,13 @@ class PeopleService:
           - "perfil.skills": [{"nombre": "python", "nivel": 5}, ...]
         """
         person = self.repo.create(payload)
-        person_id = str(person["_id"])
+        # Prefer using provided userId (set by middleware/route) as the canonical person id
+        # This keeps compatibility with auth register flow where Neo4j node id == user_id
+        provided_user_id = payload.get("userId")
+        if provided_user_id:
+            person_id = str(provided_user_id)
+        else:
+            person_id = str(person["_id"])
     
         # 🧠 Extraer habilidades en ambos formatos
         habilidades = []
@@ -80,7 +86,51 @@ class PeopleService:
         return self.repo.find_one(person_id)
 
     def update(self, person_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        return self.repo.update(person_id, updates)
+        updated = self.repo.update(person_id, updates)
+
+        # Sincronizar cambios relevantes con Neo4j (si corresponde)
+        try:
+            if not updated:
+                return updated
+
+            # Determinar id de nodo en Neo4j: preferimos userId si existe
+            node_id = updated.get("userId") or updated.get("_id")
+            if node_id:
+                node_id = str(node_id)
+
+                # Actualizar propiedades básicas del nodo
+                nombre = updated.get("datosPersonales", {}).get("nombre") or updates.get("datosPersonales", {}).get("nombre")
+                rol = updated.get("rol") or updates.get("rol")
+                if nombre or rol:
+                    self.graph_repo.create_person_node(person_id=node_id, nombre=nombre or "Desconocido", rol=rol or "Sin Rol")
+
+                # Reconstruir habilidades si se enviaron en la actualización
+                habilidades = []
+                if "habilidades" in updates:
+                    habilidades = updates.get("habilidades", [])
+                elif "perfil" in updates and "skills" in updates["perfil"]:
+                    habilidades = updates["perfil"]["skills"]
+
+                if habilidades:
+                    # eliminar relaciones previas y volver a vincular
+                    try:
+                        self.graph_repo.delete_person_skills(node_id)
+                    except Exception:
+                        pass
+
+                    for skill in habilidades:
+                        if isinstance(skill, str):
+                            self.graph_repo.link_person_to_skill(person_id=node_id, skill_name=skill, nivel=1)
+                        elif isinstance(skill, dict):
+                            nombre_skill = skill.get("nombre")
+                            nivel = skill.get("nivel", 1)
+                            if nombre_skill:
+                                self.graph_repo.link_person_to_skill(person_id=node_id, skill_name=nombre_skill, nivel=nivel)
+
+        except Exception as e:
+            print(f"⚠️ Error sincronizando actualización en Neo4j: {e}")
+
+        return updated
 
     # ==============================================
     # 🔗 CONEXIONES

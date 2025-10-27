@@ -12,9 +12,30 @@ svc = PeopleService()
 # ===============================================
 
 @router.post("/", response_model=PersonOut)
-def create_person(person: PersonIn):
+def create_person(person: PersonIn, request: Request):
+    """
+    Crea una persona vinculada al usuario en sesión.
+    El middleware asigna `request.state.user_id` y aquí lo usamos como `userId`.
+    """
+    # Requiere sesión
+    if not getattr(request, "state", None) or not request.state.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     try:
-        created = svc.create(person.model_dump())
+        person_data = person.model_dump()
+        # Forzar vínculo con el usuario autenticado
+        person_data["userId"] = request.state.user_id
+
+        # Si ya existe una persona vinculada a este userId (se crea en /auth/register),
+        # actualizamos ese documento en lugar de crear uno nuevo.
+        existing = svc.list({"userId": request.state.user_id})
+        if existing:
+            # actualizar el primer documento encontrado
+            existing_id = existing[0].get("_id")
+            updated = svc.update(existing_id, person_data)
+            return updated
+
+        created = svc.create(person_data)
         return created
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -29,7 +50,18 @@ def list_people():
 
 
 @router.get("/{person_id}", response_model=PersonOut)
-def get_person(person_id: str):
+def get_person(person_id: str, request: Request = None):
+    # Si se solicita 'me' → buscar la persona por userId almacenado en la sesión
+    if person_id == "me":
+        if not getattr(request, "state", None) or not request.state.user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        found = svc.list({"userId": request.state.user_id})
+        if not found:
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+        return found[0]
+
+    # Si se pasó un id concreto, resolver por _id (comportamiento previo)
     person = svc.get(person_id)
     if not person:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
@@ -37,18 +69,60 @@ def get_person(person_id: str):
 
 
 @router.put("/{person_id}", response_model=PersonOut)
-def update_person(person_id: str, updates: Dict[str, Any]):
-    updated = svc.update(person_id, updates)
+def update_person(person_id: str, updates: Dict[str, Any], request: Request):
+    # Requiere sesión
+    if not getattr(request, "state", None) or not request.state.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Resolver target person doc: si 'me' → buscar por userId; si no, buscar por _id
+    if person_id == "me":
+        found = svc.list({"userId": request.state.user_id})
+        if not found:
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+        target = found[0]
+        target_id = target.get("_id")
+    else:
+        target = svc.get(person_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+        # Verificar que el documento pertenece al usuario en sesión
+        if str(target.get("userId")) != str(request.state.user_id):
+            raise HTTPException(status_code=403, detail="Session user mismatch")
+        target_id = target.get("_id")
+
+    updated = svc.update(target_id, updates)
     if not updated:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     return updated
 
 
 @router.delete("/{person_id}")
-def delete_person(person_id: str):
+def delete_person(person_id: str, request: Request):
+    # Requiere sesión
+    if not getattr(request, "state", None) or not request.state.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Resolver target person doc
+    if person_id == "me":
+        found = svc.list({"userId": request.state.user_id})
+        if not found:
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+        target_id = found[0].get("_id")
+    else:
+        # si se pasó un id concreto, verificar que pertenezca a la sesión
+        target = svc.get(person_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+        if str(target.get("userId")) != str(request.state.user_id):
+            raise HTTPException(status_code=403, detail="Session user mismatch")
+        target_id = target.get("_id")
+
     try:
-        svc.delete(person_id)
-        return {"message": "Persona eliminada correctamente"}
+        if hasattr(svc, "delete"):
+            svc.delete(target_id)
+            return {"message": "Persona eliminada correctamente"}
+        else:
+            raise Exception("Delete operation not implemented on PeopleService")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -75,6 +149,10 @@ def connect_people(
         raise HTTPException(status_code=401, detail="Authentication required")
 
     # Si se pasó person_id en la URL, debe coincidir con la sesión (evita spoofing)
+    # Soporte alias 'me'
+    if person_id == "me":
+        person_id = request.state.user_id
+
     if person_id and person_id != request.state.user_id:
         raise HTTPException(status_code=403, detail="Session user mismatch")
 
@@ -95,6 +173,9 @@ def get_recommendations(person_id: str, request: Request = None):
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    if person_id == "me":
+        person_id = request.state.user_id
+
     if person_id and person_id != request.state.user_id:
         raise HTTPException(status_code=403, detail="Session user mismatch")
 
@@ -112,6 +193,9 @@ def get_network(person_id: str, request: Request = None):
     """
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
+
+    if person_id == "me":
+        person_id = request.state.user_id
 
     if person_id and person_id != request.state.user_id:
         raise HTTPException(status_code=403, detail="Session user mismatch")
@@ -131,6 +215,9 @@ def get_common_connections(person_id: str, other_id: str, request: Request = Non
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    if person_id == "me":
+        person_id = request.state.user_id
+
     if person_id and person_id != request.state.user_id:
         raise HTTPException(status_code=403, detail="Session user mismatch")
 
@@ -148,6 +235,9 @@ def get_suggested_connections(person_id: str, request: Request = None):
     """
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
+
+    if person_id == "me":
+        person_id = request.state.user_id
 
     if person_id and person_id != request.state.user_id:
         raise HTTPException(status_code=403, detail="Session user mismatch")
@@ -169,6 +259,9 @@ def delete_connection(person_id: str, target_id: str, type: str = Query(None, de
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    if person_id == "me":
+        person_id = request.state.user_id
+
     if person_id and person_id != request.state.user_id:
         raise HTTPException(status_code=403, detail="Session user mismatch")
 
@@ -186,6 +279,9 @@ def get_applications(person_id: str, request: Request = None):
     """
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
+
+    if person_id == "me":
+        person_id = request.state.user_id
 
     if person_id and person_id != request.state.user_id:
         raise HTTPException(status_code=403, detail="Session user mismatch")

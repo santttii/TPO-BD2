@@ -53,6 +53,21 @@ class Neo4jRepository:
             print(f"🔗 Vinculada habilidad '{skill_name}' (nivel {nivel}) con persona {person_id}")
 
 
+    def delete_person_skills(self, person_id: str):
+        """
+        Elimina todas las relaciones POSEE_HABILIDAD de una persona.
+        """
+        with self.driver.session() as session:
+            session.run(
+                """
+                MATCH (p:Person {id: $pid})-[r:POSEE_HABILIDAD]->(s)
+                DELETE r
+                """,
+                pid=person_id
+            )
+            logging.info(f"🧹 Eliminadas relaciones POSEE_HABILIDAD para persona {person_id}")
+
+
 
     # ===============================================================
     # 🔗 CONEXIÓN UNIDIRECCIONAL

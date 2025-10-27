@@ -216,6 +216,58 @@ class Neo4jRepository:
         except Exception as e:
             logging.error(f"❌ Error eliminando conexión: {e}")
             raise
+    
+    # ===============================================================
+    # 🔁 Métodos genéricos para crear/borrar relaciones entre nodos por id
+    # ===============================================================
+    def create_relationship(self, source_id: str, target_id: str, rel_type: str):
+        """
+        Crea una relación del tipo `rel_type` entre dos nodos identificados por su propiedad id.
+        rel_type se normaliza a mayúsculas y sin espacios.
+        """
+        rel = rel_type.upper().replace(" ", "_")
+        logging.info(f"➡️ Creando relación {rel} entre {source_id} -> {target_id}")
+        query = f"""
+        MATCH (a {{id: $src}}), (b {{id: $tgt}})
+        MERGE (a)-[r:{rel}]->(b)
+        RETURN COUNT(r) AS total
+        """
+        with self.driver.session() as session:
+            result = session.run(query, src=source_id, tgt=target_id)
+            data = result.single()
+            count = data["total"] if data else 0
+            logging.info(f"✅ Relación {rel} creada. Total: {count}")
+            return count
+
+    def delete_relationship(self, source_id: str, target_id: str, rel_type: str | None = None):
+        """
+        Elimina relaciones entre dos nodos. Si `rel_type` es None, elimina todas las relaciones
+        entre los dos nodos; si se especifica rel_type, elimina solo las de ese tipo.
+        """
+        try:
+            if rel_type:
+                rel = rel_type.upper().replace(" ", "_")
+                query = f"""
+                MATCH (a {{id: $src}})-[r:{rel}]-(b {{id: $tgt}})
+                DELETE r
+                RETURN COUNT(r) AS eliminadas
+                """
+            else:
+                query = """
+                MATCH (a {id: $src})-[r]-(b {id: $tgt})
+                DELETE r
+                RETURN COUNT(r) AS eliminadas
+                """
+
+            with self.driver.session() as session:
+                result = session.run(query, src=source_id, tgt=target_id)
+                data = result.single()
+                count = data["eliminadas"] if data else 0
+                logging.info(f"🗑️ Eliminadas {count} relaciones entre {source_id} y {target_id}")
+                return count
+        except Exception as e:
+            logging.error(f"❌ Error eliminando relación genérica: {e}")
+            raise
     # ===============================================================
     # 🏢 CREAR NODO COMPANY
     # ===============================================================

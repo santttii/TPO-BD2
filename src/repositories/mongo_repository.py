@@ -71,4 +71,21 @@ class MongoRepository:
             res = self.col.delete_one({"_id": _id})
             return getattr(res, "deleted_count", 0)
     
+    def add_to_array(self, _id: str, field: str, value: Any) -> Optional[Dict[str, Any]]:
+        """
+        Agrega un elemento a un arreglo en el documento identificado por _id.
+        Devuelve el documento actualizado (stringificando _id) o None si no existe.
+        """
+        updates = {"actualizadoEn": datetime.utcnow()}
+        try:
+            res = self.col.update_one({"_id": ObjectId(_id)}, {"$push": {field: value}, "$set": updates})
+        except Exception:
+            # fallback si _id no es ObjectId (documentos con _id string)
+            res = self.col.update_one({"_id": _id}, {"$push": {field: value}, "$set": updates})
+
+        if res.matched_count:
+            doc = self.col.find_one({"_id": ObjectId(_id)}) if isinstance(_id, str) and len(_id) == 24 else self.col.find_one({"_id": _id})
+            return self._stringify_id(doc)
+        return None
+    
 

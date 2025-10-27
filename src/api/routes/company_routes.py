@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from typing import List, Dict, Any
 from src.models.company_model import CompanyIn, CompanyOut
 from src.services.company_service import CompanyService
@@ -63,9 +63,22 @@ def link_companies(company_a: str, company_b: str, body: Dict[str, str]):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{company_id}/employees/{person_id}")
-def link_employee(company_id: str, person_id: str, body: Dict[str, str]):
+def link_employee(company_id: str, person_id: str, body: Dict[str, str], request: Request):
+    """
+    Vincula la persona autenticada a la empresa. Requiere sesión válida.
+    - Si no viene sesión -> 401
+    - Si el person_id en la URL no coincide con la sesión -> 403
+    """
+    if not getattr(request, "state", None) or not request.state.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    if person_id and person_id != request.state.user_id:
+        raise HTTPException(status_code=403, detail="Session user mismatch")
+
     try:
         role = body.get("role", "TRABAJA_EN")
-        return svc.link_person(person_id, company_id, role)
+        return svc.link_person(request.state.user_id, company_id, role)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from typing import List, Dict, Any
 from src.models.job_model import JobIn, JobOut
 from src.services.job_service import JobService
@@ -47,12 +47,19 @@ def delete_job(job_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{job_id}/apply/{person_id}")
-def apply_to_job(job_id: str, person_id: str):
+def apply_to_job(job_id: str, person_id: str, request: Request):
     """
-    Crea una postulación (Person -> Job)
+    Crea una postulación (Person -> Job). Requiere sesión válida y que el
+    person_id en la URL coincida con la sesión.
     """
+    if not getattr(request, "state", None) or not request.state.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    if person_id and person_id != request.state.user_id:
+        raise HTTPException(status_code=403, detail="Session user mismatch")
+
     try:
-        return svc.apply(person_id, job_id)
+        return svc.apply(request.state.user_id, job_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -16,9 +16,18 @@ async def session_middleware(request: Request, call_next):
     - Si hay error de conexión con Redis -> responde 500
     """
     request.state.user_id = None
-    session_id = request.headers.get("X-Session-Id")
+
+    # Soportar Authorization: Bearer <token> además de X-Session-Id
+    auth_header = request.headers.get("authorization")
+    session_id = None
+    if auth_header and isinstance(auth_header, str) and auth_header.lower().startswith("bearer "):
+        session_id = auth_header.split(" ", 1)[1].strip()
+    else:
+        # Compatibilidad hacia atrás: X-Session-Id
+        session_id = request.headers.get("x-session-id")
+
     if not session_id:
-        # No hay sesión, dejamos la request sin user_id (compatibilidad hacia atrás)
+        # No hay sesión, dejamos la request sin user_id (compatibilidad)
         return await call_next(request)
 
     try:
@@ -30,6 +39,14 @@ async def session_middleware(request: Request, call_next):
 
     if not user_id:
         return JSONResponse(status_code=401, content={"detail": "Session invalid or expired"})
+
+    # Redis puede devolver bytes. Convertir a str si es necesario.
+    try:
+        if isinstance(user_id, bytes):
+            user_id = user_id.decode("utf-8")
+    except Exception:
+        # En caso de error al decodificar, dejar tal cual
+        pass
 
     # Guardamos el user id resuelto para que las rutas lo usen
     request.state.user_id = user_id

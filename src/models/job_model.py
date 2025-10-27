@@ -14,7 +14,9 @@ class JobIn(BaseModel):
     ubicacion: str
     salario: float
     empresaId: str
-    requisitos: Requisitos
+    # Hacemos `requisitos` opcional y con valor por defecto vacio para evitar
+    # errores de validación cuando existan jobs antiguos sin ese campo.
+    requisitos: Optional[Requisitos] = Field(default_factory=Requisitos)
 
 
 class JobOut(JobIn):

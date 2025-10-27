@@ -289,17 +289,33 @@ class Neo4jRepository:
         """
         Crea un nodo Job y lo conecta con la empresa que lo publica.
         """
+        # Usar MERGE para crear/actualizar el nodo Job; también asegurar
+        # que exista (o se cree) el nodo Company para poder conectar.
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (e:Company {id: $empresa_id})
-                CREATE (j:Job {id: $id, titulo: $titulo})
+                MERGE (j:Job {id: $id})
+                SET j.titulo = $titulo
+                WITH j
+                MERGE (e:Company {id: $empresa_id})
                 MERGE (e)-[:PUBLICA]->(j)
                 """,
                 id=job_id,
                 titulo=titulo,
                 empresa_id=empresa_id
-            )
+            ).consume()
+        logging.info(f"💼 Nodo Job creado/actualizado: {job_id} - {titulo}")
+
+    def node_exists(self, label: str, node_id: str) -> bool:
+        """
+        Comprueba si existe un nodo con la etiqueta `label` y la propiedad id == node_id.
+        """
+        query = f"MATCH (n:{label} {{id: $id}}) RETURN COUNT(n) AS cnt"
+        with self.driver.session() as session:
+            result = session.run(query, id=node_id)
+            data = result.single()
+            cnt = data["cnt"] if data and "cnt" in data else 0
+            return bool(cnt)
 
     # ===============================================================
     # 🧍 PERSONA POSTULA A JOB
@@ -379,6 +395,15 @@ class Neo4jRepository:
                 job_id=job_id,
                 skill=skill_name
             )
+
+    def delete_job_skill_links(self, job_id: str):
+        """
+        Elimina las relaciones REQUERIMIENTO_DE / DESEA entre un job y sus skills.
+        """
+        q = "MATCH (:Job {id:$jid})-[r]->(:Skill) DELETE r"
+        with self.driver.session() as session:
+            session.run(q, jid=job_id).consume()
+        logging.info(f"🔗 Relaciones de skills eliminadas para job {job_id}")
 
 
     def get_job_recommendations(self, person_id: str, limit: int = 10):

@@ -59,4 +59,16 @@ class MongoRepository:
         doc = self.col.find_one({"_id": ObjectId(_id)})
         return self._stringify_id(doc)
     
+    def delete(self, _id: str) -> int:
+        """
+        Elimina un documento por _id. Devuelve deleted_count (0 o 1).
+        """
+        try:
+            res = self.col.delete_one({"_id": ObjectId(_id)})
+            return res.deleted_count
+        except Exception:
+            # intentar con la forma en que _id pudiera ser string (no ObjectId)
+            res = self.col.delete_one({"_id": _id})
+            return getattr(res, "deleted_count", 0)
+    
 

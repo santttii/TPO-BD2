@@ -49,46 +49,28 @@ def list_people():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{person_id}", response_model=PersonOut)
-def get_person(person_id: str, request: Request = None):
-    # Si se solicita 'me' → buscar la persona por userId almacenado en la sesión
-    if person_id == "me":
-        if not getattr(request, "state", None) or not request.state.user_id:
-            raise HTTPException(status_code=401, detail="Authentication required")
+@router.get("/me", response_model=PersonOut)
+def get_person(request: Request):
+    # Devuelve la persona vinculada al usuario en sesión
+    if not getattr(request, "state", None) or not request.state.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
 
-        found = svc.list({"userId": request.state.user_id})
-        if not found:
-            raise HTTPException(status_code=404, detail="Persona no encontrada")
-        return found[0]
-
-    # Si se pasó un id concreto, resolver por _id (comportamiento previo)
-    person = svc.get(person_id)
-    if not person:
+    found = svc.list({"userId": request.state.user_id})
+    if not found:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
-    return person
+    return found[0]
 
 
-@router.put("/{person_id}", response_model=PersonOut)
-def update_person(person_id: str, updates: Dict[str, Any], request: Request):
+@router.put("/me", response_model=PersonOut)
+def update_person(updates: Dict[str, Any], request: Request):
     # Requiere sesión
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    # Resolver target person doc: si 'me' → buscar por userId; si no, buscar por _id
-    if person_id == "me":
-        found = svc.list({"userId": request.state.user_id})
-        if not found:
-            raise HTTPException(status_code=404, detail="Persona no encontrada")
-        target = found[0]
-        target_id = target.get("_id")
-    else:
-        target = svc.get(person_id)
-        if not target:
-            raise HTTPException(status_code=404, detail="Persona no encontrada")
-        # Verificar que el documento pertenece al usuario en sesión
-        if str(target.get("userId")) != str(request.state.user_id):
-            raise HTTPException(status_code=403, detail="Session user mismatch")
-        target_id = target.get("_id")
+    found = svc.list({"userId": request.state.user_id})
+    if not found:
+        raise HTTPException(status_code=404, detail="Persona no encontrada")
+    target_id = found[0].get("_id")
 
     updated = svc.update(target_id, updates)
     if not updated:
@@ -96,26 +78,16 @@ def update_person(person_id: str, updates: Dict[str, Any], request: Request):
     return updated
 
 
-@router.delete("/{person_id}")
-def delete_person(person_id: str, request: Request):
+@router.delete("/me")
+def delete_person(request: Request):
     # Requiere sesión
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    # Resolver target person doc
-    if person_id == "me":
-        found = svc.list({"userId": request.state.user_id})
-        if not found:
-            raise HTTPException(status_code=404, detail="Persona no encontrada")
-        target_id = found[0].get("_id")
-    else:
-        # si se pasó un id concreto, verificar que pertenezca a la sesión
-        target = svc.get(person_id)
-        if not target:
-            raise HTTPException(status_code=404, detail="Persona no encontrada")
-        if str(target.get("userId")) != str(request.state.user_id):
-            raise HTTPException(status_code=403, detail="Session user mismatch")
-        target_id = target.get("_id")
+    found = svc.list({"userId": request.state.user_id})
+    if not found:
+        raise HTTPException(status_code=404, detail="Persona no encontrada")
+    target_id = found[0].get("_id")
 
     try:
         if hasattr(svc, "delete"):
@@ -131,9 +103,8 @@ def delete_person(person_id: str, request: Request):
 # 🔗 CONEXIONES (Neo4j)
 # ===============================================
 
-@router.post("/{person_id}/connections/{target_id}")
+@router.post("/me/connections/{target_id}")
 def connect_people(
-    person_id: str,
     target_id: str,
     body: Dict[str, str],
     direction: str = Query("two-way", description="Tipo de conexión: one-way o two-way"),
@@ -148,14 +119,6 @@ def connect_people(
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    # Si se pasó person_id en la URL, debe coincidir con la sesión (evita spoofing)
-    # Soporte alias 'me'
-    if person_id == "me":
-        person_id = request.state.user_id
-
-    if person_id and person_id != request.state.user_id:
-        raise HTTPException(status_code=403, detail="Session user mismatch")
-
     try:
         tipo = body.get("type", "amistad")
         source_id = request.state.user_id
@@ -165,19 +128,13 @@ def connect_people(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{person_id}/recommendations")
-def get_recommendations(person_id: str, request: Request = None):
+@router.get("/me/recommendations")
+def get_recommendations(request: Request = None):
     """
     Obtiene empleos recomendados para una persona según sus habilidades.
     """
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-
-    if person_id == "me":
-        person_id = request.state.user_id
-
-    if person_id and person_id != request.state.user_id:
-        raise HTTPException(status_code=403, detail="Session user mismatch")
 
     try:
         pid = request.state.user_id
@@ -186,19 +143,13 @@ def get_recommendations(person_id: str, request: Request = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{person_id}/network")
-def get_network(person_id: str, request: Request = None):
+@router.get("/me/network")
+def get_network(request: Request = None):
     """
     Devuelve la red (conexiones) de una persona.
     """
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-
-    if person_id == "me":
-        person_id = request.state.user_id
-
-    if person_id and person_id != request.state.user_id:
-        raise HTTPException(status_code=403, detail="Session user mismatch")
 
     try:
         pid = request.state.user_id
@@ -207,40 +158,31 @@ def get_network(person_id: str, request: Request = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{person_id}/connections/common/{other_id}")
-def get_common_connections(person_id: str, other_id: str, request: Request = None):
+@router.get("/me/connections/common/{other_id}")
+def get_common_connections(other_id: str, request: Request = None):
     """
     Devuelve las conexiones en común entre dos personas.
     """
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    if person_id == "me":
-        person_id = request.state.user_id
-
-    if person_id and person_id != request.state.user_id:
-        raise HTTPException(status_code=403, detail="Session user mismatch")
-
     try:
         pid = request.state.user_id
+        # if other_id == 'me', map to session user id
+        if other_id == "me":
+            other_id = request.state.user_id
         commons = svc.get_common_connections(pid, other_id)
         return {"person1": pid, "person2": other_id, "commonConnections": commons}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{person_id}/connections/suggested")
-def get_suggested_connections(person_id: str, request: Request = None):
+@router.get("/me/connections/suggested")
+def get_suggested_connections(request: Request = None):
     """
     Devuelve sugerencias de conexión (segundo grado de relación).
     """
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-
-    if person_id == "me":
-        person_id = request.state.user_id
-
-    if person_id and person_id != request.state.user_id:
-        raise HTTPException(status_code=403, detail="Session user mismatch")
 
     try:
         pid = request.state.user_id
@@ -249,8 +191,8 @@ def get_suggested_connections(person_id: str, request: Request = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/{person_id}/connections/{target_id}")
-def delete_connection(person_id: str, target_id: str, type: str = Query(None, description="Tipo de conexión opcional"), request: Request = None):
+@router.delete("/me/connections/{target_id}")
+def delete_connection(target_id: str, type: str = Query(None, description="Tipo de conexión opcional"), request: Request = None):
     """
     Elimina una conexión entre dos personas.
     - Si se pasa ?type=MENTORSHIP → elimina solo ese tipo.
@@ -259,12 +201,6 @@ def delete_connection(person_id: str, target_id: str, type: str = Query(None, de
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    if person_id == "me":
-        person_id = request.state.user_id
-
-    if person_id and person_id != request.state.user_id:
-        raise HTTPException(status_code=403, detail="Session user mismatch")
-
     try:
         pid = request.state.user_id
         result = svc.delete_connection(pid, target_id, type)
@@ -272,19 +208,13 @@ def delete_connection(person_id: str, target_id: str, type: str = Query(None, de
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{person_id}/applications")
-def get_applications(person_id: str, request: Request = None):
+@router.get("/me/applications")
+def get_applications(request: Request = None):
     """
     Devuelve los empleos a los que una persona se postuló.
     """
     if not getattr(request, "state", None) or not request.state.user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-
-    if person_id == "me":
-        person_id = request.state.user_id
-
-    if person_id and person_id != request.state.user_id:
-        raise HTTPException(status_code=403, detail="Session user mismatch")
 
     try:
         pid = request.state.user_id
@@ -293,30 +223,30 @@ def get_applications(person_id: str, request: Request = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/people/{person_id}/recommendations", tags=["People"])
-def get_job_recommendations(person_id: str):
+@router.get("/me/jobs/recommendations", tags=["People"])
+def get_job_recommendations(request: Request):
     """
     Retorna los empleos más afines según las habilidades de la persona.
     """
     try:
         service = PeopleService()
-        recommendations = service.get_recommendations(person_id)
-        return {"person_id": person_id, "recommendations": recommendations}
+        uid = request.state.user_id
+        recommendations = service.get_recommendations(uid)
+        return {"person_id": uid, "recommendations": recommendations}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{person_id}/skills")
-def get_person_skills(person_id: str):
+@router.get("/me/skills")
+def get_person_skills(request: Request):
     """
     Obtiene todas las habilidades de una persona (con su nivel) desde Neo4j.
     """
     try:
-        skills = svc.get_skills(person_id)
-        return {"personId": person_id, "skills": skills}
+        pid = request.state.user_id
+        skills = svc.get_skills(pid)
+        return {"personId": pid, "skills": skills}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-from fastapi import Query
 
 @router.get("/skills/{skill_name}/people")
 def get_people_by_skill(skill_name: str, min_level: int = Query(1, ge=1, le=5, description="Nivel mínimo (1-5)")):

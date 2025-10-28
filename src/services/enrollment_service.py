@@ -153,11 +153,39 @@ class EnrollmentService:
             try:
                 person_doc = self.people.find_one(person_mongo_id)
                 node_person_id = (person_doc.get("userId") if person_doc else None) or person_mongo_id
+                # Marcar completado en la relación INSCRIPTO_EN
                 self.graph.set_inscripcion_completa(
                     node_person_id, course_id,
                     nota=set_fields.get("nota"),
                     certificacionUrl=set_fields.get("certificacionUrl"),
                 )
+
+                # --- NUEVO: agregar las skills que otorga el curso a la persona ---
+                try:
+                    course_doc = self.courses.find_one(course_id)
+                    if course_doc:
+                        skills = course_doc.get("skillsRequeridos") or []
+                        for s in skills:
+                            # soporta formato dict {"nombre":..., "nivelMin":...} o string
+                            if isinstance(s, dict):
+                                skill_name = s.get("nombre") or s.get("name")
+                                nivel = s.get("nivelMin") or s.get("nivel") or 1
+                            elif isinstance(s, str):
+                                skill_name = s
+                                nivel = 1
+                            else:
+                                continue
+
+                            if not skill_name:
+                                continue
+
+                            try:
+                                # link_person_to_skill hace MERGE del nodo Skill si hace falta
+                                self.graph.link_person_to_skill(node_person_id, skill_name, nivel=int(nivel))
+                            except Exception as e:
+                                logging.warning(f"[complete] fallo vinculando skill '{skill_name}' a persona {node_person_id}: {e}")
+                except Exception as e:
+                    logging.warning(f"[complete] No se pudieron asignar skills del curso en Neo4j: {e}")
             except Exception as e:
                 logging.warning(f"[complete] Neo4j omitido por error: {e}")
 

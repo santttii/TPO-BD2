@@ -59,7 +59,8 @@ class CourseService:
             "titulo": payload["titulo"],
             "slug": payload["slug"],
             "descripcion": payload.get("descripcion"),
-            "skillsRequeridos": payload.get("skillsRequeridos", []),  # [{nombre, nivelMin?}]
+            "skillsOtorgadas": payload.get("skillsOtorgadas", []),  # [{nombre, nivelMin?}]
+            "Pdfs": payload.get("Pdfs", []),  # lista de PDFs asociados al curso
             "metadata": payload.get("metadata", {}),
             "createdAt": self._now(),
             "updatedAt": self._now(),
@@ -75,7 +76,7 @@ class CourseService:
         try:
             proveedor = (course.get("metadata") or {}).get("proveedor")
             self.graph.create_course_node(course_id, course["titulo"], proveedor)
-            for s in course.get("skillsRequeridos", []):
+            for s in course.get("skillsOtorgadas", []):
                 if isinstance(s, dict) and s.get("nombre"):
                     self.graph.link_course_to_skill(course_id, s["nombre"], s.get("nivelMin"))
         except Exception as e:
@@ -89,7 +90,7 @@ class CourseService:
             if filters.get("q"):
                 q["titulo"] = {"$regex": filters["q"], "$options": "i"}
             if filters.get("skill"):
-                q["skillsRequeridos.nombre"] = {"$regex": f"^{filters['skill']}$", "$options": "i"}
+                q["skillsOtorgadas.nombre"] = {"$regex": f"^{filters['skill']}$", "$options": "i"}
             if filters.get("dificultad"):
                 q["metadata.dificultad"] = filters["dificultad"]
 
@@ -149,9 +150,9 @@ class CourseService:
                     self.graph.create_course_node(course_id, titulo, proveedor)
 
             # si cambiaron las skills, refrescar relaciones
-            if "skillsRequeridos" in updates and isinstance(out.get("skillsRequeridos"), list):
+            if "skillsOtorgadas" in updates and isinstance(out.get("skillsOtorgadas"), list):
                 self.graph.delete_course_skill_links(course_id)
-                for s in out["skillsRequeridos"]:
+                for s in out["skillsOtorgadas"]:
                     if isinstance(s, dict) and s.get("nombre"):
                         self.graph.link_course_to_skill(course_id, s["nombre"], s.get("nivelMin"))
         except Exception as e:

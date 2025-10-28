@@ -10,6 +10,7 @@ class ApplicationService:
         self.repo = MongoRepository("applications")
         self.graph_repo = Neo4jRepository()
         self.jobs_repo = MongoRepository("jobs")
+        self.people_repo = MongoRepository("people")
 
     # ===============================================================
     # 📋 LISTADOS
@@ -74,7 +75,7 @@ class ApplicationService:
                 "en entrevista": "EN_ENTREVISTA_CON",
                 "evaluado": "EVALUADO_PARA",
                 "oferta": "OFERTA_DE",
-                "contratado": "CONTRATADO_EN",
+                "contratado": "TRABAJA_EN",
                 "rechazado": "RECHAZADO_EN",
                 "postulado": "POSTULA_A"
             }
@@ -84,19 +85,38 @@ class ApplicationService:
             # Crear relación base Persona → Job (usar node_person_id)
             self.graph_repo.create_relationship(node_person_id, job_id, rel_type)
 
-            # Si es contratado, también vincular con la empresa
+            # Si es contratado, crear vínculo laboral permanente TRABAJA_EN y guardar experiencia en Mongo
             if estado.lower() == "contratado":
                 job_doc = self.jobs_repo.find_one(job_id)
                 empresa_id = job_doc.get("empresaId") if job_doc else None
                 if empresa_id:
-                    # Relación que indica contratación formal
-                    self.graph_repo.create_relationship(node_person_id, empresa_id, "CONTRATADO_EN")
-                    # Además crear relación laboral permanente TRABAJA_EN hacia la empresa
+                    # Crear relación laboral permanente TRABAJA_EN hacia la empresa
                     try:
                         self.graph_repo.create_relationship(node_person_id, empresa_id, "TRABAJA_EN")
                     except Exception:
                         # No queremos que la falla en esta relación impida la respuesta principal
                         pass
+
+                    # Actualizar experiencia en el documento people (MongoDB)
+                    try:
+                        # person_id (mongo) preferible para update
+                        pid = person_id or person_user_id
+                        person = self.people_repo.find_one(pid)
+                        if person is not None:
+                            experiencia = person.get("experiencia", [])
+                            # construir nuevo entry
+                            started = datetime.utcnow().isoformat()
+                            role = None
+                            if job_doc:
+                                role = job_doc.get("titulo")
+                            entry = {"companyId": empresa_id, "rol": role, "startedAt": started}
+                            # evitar duplicados simples (mismo companyId y rol)
+                            exists = any((e.get("companyId") == empresa_id and e.get("rol") == role) for e in experiencia)
+                            if not exists:
+                                experiencia.append(entry)
+                                self.people_repo.update(pid, {"experiencia": experiencia})
+                    except Exception as e:
+                        print(f"⚠️ Error actualizando experiencia en Mongo: {e}")
 
         except Exception as e:
             print(f"⚠️ Error sincronizando estado en Neo4j: {e}")

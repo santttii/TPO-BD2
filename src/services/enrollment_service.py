@@ -63,6 +63,25 @@ class EnrollmentService:
                 doc = self.repo.col.find_one({"personId": person_id, "courseId": course_id})
                 out = self._clean(doc) or {}
 
+            # --- Actualizar el modelo people en MongoDB ---
+            try:
+                # Buscar persona
+                person_doc = self.people.find_one(person_id)
+                if person_doc is not None:
+                    cursos = person_doc.get("cursos", [])
+                    # Buscar si ya existe el curso
+                    found = False
+                    for c in cursos:
+                        if c.get("cursoId") == course_id:
+                            c["estado"] = payload["estado"]
+                            found = True
+                            break
+                    if not found:
+                        cursos.append({"cursoId": course_id, "estado": payload["estado"], "certificacion": None})
+                    self.people.update(person_id, {"cursos": cursos})
+            except Exception as e:
+                logging.warning(f"[enroll] No se pudo actualizar cursos en people: {e}")
+
             # Neo4j: una sola relación INSCRIPTO_EN con props (best-effort)
             try:
                 # Determinar el id del nodo Person en Neo4j: preferimos userId (si existe)
@@ -119,6 +138,26 @@ class EnrollmentService:
             except Exception as e:
                 logging.warning(f"[progress] Neo4j omitido por error: {e}")
 
+            # --- Actualizar el atributo 'cursos' en el documento de la persona ---
+            try:
+                person_mongo_id = doc.get("personId")
+                if person_mongo_id:
+                    pdoc = self.people.find_one(person_mongo_id)
+                    if pdoc is not None:
+                        cursos = pdoc.get("cursos", [])
+                        found = False
+                        for c in cursos:
+                            if c.get("cursoId") == doc.get("courseId"):
+                                # actualizar sólo el estado, manteniendo la certificación si existe
+                                c["estado"] = estado
+                                found = True
+                                break
+                        if not found:
+                            cursos.append({"cursoId": doc.get("courseId"), "estado": estado, "certificacion": None})
+                        self.people.update(person_mongo_id, {"cursos": cursos})
+            except Exception as e:
+                logging.warning(f"[progress] No se pudo actualizar cursos en people: {e}")
+
             return self._clean(doc) or {}
 
 
@@ -164,7 +203,7 @@ class EnrollmentService:
                 try:
                     course_doc = self.courses.find_one(course_id)
                     if course_doc:
-                        skills = course_doc.get("skillsRequeridos") or []
+                        skills = course_doc.get("skillsOtorgadas") or []
                         for s in skills:
                             # soporta formato dict {"nombre":..., "nivelMin":...} o string
                             if isinstance(s, dict):
@@ -190,4 +229,47 @@ class EnrollmentService:
                 logging.warning(f"[complete] Neo4j omitido por error: {e}")
 
             doc = self.repo.find_one(enr_id)
+            # --- Actualizar el atributo 'cursos' en el documento de la persona (estado = Completado) ---
+            try:
+                p = self.people.find_one(person_mongo_id)
+                if p is not None:
+                    cursos = p.get("cursos", [])
+                    found = False
+                    # construir objeto de certificación a insertar en el curso
+                    cert_url = set_fields.get("certificacionUrl")
+                    cert_obj = None
+                    try:
+                        course_doc = self.courses.find_one(course_id)
+                        # prioridad: certificacionUrl pasada en el request; si no existe, intentar extraer del course_doc
+                        if cert_url:
+                            cert_obj = {"nombre": (course_doc.get("titulo") if course_doc else "Certificado"), "url": cert_url, "nota": set_fields.get("nota"), "emitidoEn": self._now()}
+                        else:
+                            # intentar extraer una certificación desde el documento del curso
+                            if course_doc:
+                                cinfo = course_doc.get("certificaciones") or (course_doc.get("metadata") or {}).get("certificaciones")
+                                if cinfo:
+                                    # tomar la primera certificación si existe
+                                    first = cinfo[0]
+                                    if isinstance(first, dict):
+                                        cert_obj = {"nombre": first.get("nombre") or course_doc.get("titulo"), "url": first.get("url"), "nota": set_fields.get("nota"), "emitidoEn": self._now()}
+                                    elif isinstance(first, str):
+                                        cert_obj = {"nombre": first, "url": None, "nota": set_fields.get("nota"), "emitidoEn": self._now()}
+                    except Exception:
+                        cert_obj = cert_obj
+
+                    for c in cursos:
+                        if c.get("cursoId") == course_id:
+                            c["estado"] = "Completado"
+                            # insertar certificación dentro del curso
+                            if cert_obj:
+                                c["certificacion"] = cert_obj
+                            found = True
+                            break
+                    if not found:
+                        entry = {"cursoId": course_id, "estado": "Completado", "certificacion": cert_obj}
+                        cursos.append(entry)
+                    self.people.update(person_mongo_id, {"cursos": cursos})
+            except Exception as e:
+                logging.warning(f"[complete] No se pudo actualizar cursos en people: {e}")
+
             return self._clean(doc) or {}

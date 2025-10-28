@@ -549,17 +549,17 @@ class Neo4jRepository:
         q = """
         MATCH (c:Course {id:$cid})
         MERGE (s:Skill {nombre:$sname})
-        MERGE (c)-[r:REQUIERE]->(s)
+        MERGE (c)-[r:ENSEÑA]->(s)
         SET r.nivelMin=$nivelMin
         """
         with self.driver.session() as session:
             session.run(q, cid=course_id, sname=skill_name, nivelMin=nivelMin).consume()
 
     def delete_course_skill_links(self, course_id: str):
-        q = "MATCH (:Course {id:$cid})-[r:REQUIERE]->(:Skill) DELETE r"
+        q = "MATCH (:Course {id:$cid})-[r:ENSEÑA]->(:Skill) DELETE r"
         with self.driver.session() as session:
             session.run(q, cid=course_id).consume()
-        logging.info(f"🔗 Relaciones REQUIERE eliminadas para course {course_id}")
+        logging.info(f"🔗 Relaciones ENSEÑA eliminadas para course {course_id}")
 
     def link_person_to_course(self, person_id: str, course_id: str):
         q = """

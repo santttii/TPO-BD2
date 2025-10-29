@@ -10,7 +10,7 @@ class RedisRepository:
     Mantiene métodos de caché y ranking.
     """
 
-    def __init__(self):
+    def _init_(self):
         # 🔗 Conectarse a Redis usando la función global
         self.client = get_redis_client()
 

@@ -97,3 +97,45 @@ def delete_company(company_id: str, request: Request):
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting company: {e}")
+    
+@router.post("/{company_a}/partners/{company_b}")
+def link_companies(company_a: str, company_b: str, body: Dict[str, str]):
+    """
+    Crea una relación de partnership siempre en ambos sentidos entre company_a y company_b.
+    Esto fuerza que exista (A)-[:TYPE]->(B) y (B)-[:TYPE]->(A).
+    """
+    try:
+        tipo = body.get("type", "PARTNER_DE")
+        # Crear ambas direcciones (best-effort; no queremos que una falla impida la otra)
+        res_ab = None
+        res_ba = None
+        try:
+            res_ab = svc.link_partner(company_a, company_b, tipo)
+        except Exception as e:
+            # registrar y continuar
+            res_ab = {"warning": f"Could not link {company_a} -> {company_b}: {e}"}
+
+        try:
+            res_ba = svc.link_partner(company_b, company_a, tipo)
+        except Exception as e:
+            res_ba = {"warning": f"Could not link {company_b} -> {company_a}: {e}"}
+
+        return {"a_to_b": res_ab, "b_to_a": res_ba}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{company_id}/employees/me")
+def link_employee(company_id: str, body: Dict[str, str], request: Request):
+    """
+    Vincula al usuario autenticado como empleado de la empresa.
+    Usa el user_id obtenido por el middleware (request.state.user_id) en lugar
+    de recibir un person_id en la URL.
+    """
+    # Requiere sesión
+    user_id = _require_auth(request)
+
+    try:
+        role = body.get("role", "TRABAJA_EN")
+        return svc.link_person(user_id, company_id, role)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

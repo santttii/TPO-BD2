@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from src.repositories.mongo_repository import MongoRepository
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.utils.redis_stats import record_application
 
 
 class JobService:
@@ -161,6 +162,13 @@ class JobService:
                 "actualizadoEn": datetime.utcnow()
             }
             application = self.applications_repo.create(data)
+
+            # Record statistics in Redis (applications per job/person)
+            try:
+                stats_person_id = person_user_id or person_mongo_id
+                record_application(stats_person_id, job_id)
+            except Exception:
+                pass
 
             return {
                 "message": f"Persona {person_id} se postuló al job {job_id}",

@@ -1,12 +1,15 @@
 from typing import Dict, Any, List, Optional
 from src.repositories.mongo_repository import MongoRepository
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.repositories.redis_repository import RedisRepository
+from src.utils.redis_stats import record_connection, record_profile_view
 
 
 class PeopleService:
     def __init__(self):
         self.repo = MongoRepository("people")
         self.graph_repo = Neo4jRepository()
+        self.redis_repo = RedisRepository()
 
     # ==============================================
     # 👤 CRUD
@@ -83,7 +86,36 @@ class PeopleService:
         return self.repo.find(filters)
 
     def get(self, person_id: str) -> Optional[Dict[str, Any]]:
-        return self.repo.find_one(person_id)
+        person = None
+        # 1) Intentar buscar por _id (find_one). Puede fallar si el id no es ObjectId.
+        try:
+            person = self.repo.find_one(person_id)
+        except Exception:
+            person = None
+
+        # 2) Si no existe, intentar buscar por userId dentro del documento people
+        if not person:
+            try:
+                found = self.repo.find({"userId": person_id})
+                if found:
+                    person = found[0]
+            except Exception:
+                person = None
+
+        if person:
+            # Record profile view in Redis stats (use userId when available)
+            try:
+                stats_id = person.get("userId") or str(person.get("_id"))
+                record_profile_view(stats_id)
+            except Exception:
+                pass
+            # Cache person data
+            try:
+                self.redis_repo.cache_person(str(person.get("_id")), person)
+            except Exception:
+                pass
+
+        return person
 
     def update(self, person_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         updated = self.repo.update(person_id, updates)
@@ -146,6 +178,24 @@ class PeopleService:
                 self.graph_repo.create_connection_one_way(source_id, target_id, tipo)
             else:
                 self.graph_repo.create_connection_two_way(source_id, target_id, tipo)
+            
+            # Record connection in Redis stats under userIds
+            try:
+                # source_id should be the authenticated user id (userId)
+                source_user = source_id
+                # resolve target: if target_id corresponds to a people _id, map to its userId
+                target_user = target_id
+                try:
+                    found = self.repo.find_one(target_id)
+                    if found and found.get("userId"):
+                        target_user = found.get("userId")
+                except Exception:
+                    # not a mongo _id or not found; assume it's already a userId
+                    pass
+
+                record_connection(source_user, target_user)
+            except Exception:
+                pass
 
             return {
                 "message": f"{source_id} conectado con {target_id}",

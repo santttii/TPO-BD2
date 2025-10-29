@@ -264,3 +264,25 @@ def get_people_by_skill(skill_name: str, min_level: int = Query(1, ge=1, le=5, d
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{person_id}", response_model=PersonOut)
+def get_person_by_id(person_id: str, request: Request):
+    """
+    Devuelve la información de una persona por su ID (similar a /me).
+    Requiere autenticación. Cada vez que se consulta esta ruta se incrementa
+    la stat de 'profile views' para la persona consultada (registrado en Redis).
+    """
+    # Requiere sesión
+    if not getattr(request, "state", None) or not request.state.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        person = svc.get(person_id)
+        if not person:
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+        return person
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

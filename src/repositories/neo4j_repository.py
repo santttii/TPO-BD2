@@ -172,7 +172,7 @@ class Neo4jRepository:
         pero comparten al menos una conexión en común.
         """
         query = """
-        MATCH (p:Person {id: $id})-[]->(amigo:Person)-[]->(sugerido:Person)
+        MATCH (p:Person {id: $id})-[]->(AMISTAD:Person)-[]->(sugerido:Person)
         WHERE NOT (p)-[]-(sugerido) AND p <> sugerido
         RETURN DISTINCT sugerido.id AS id, sugerido.nombre AS nombre, sugerido.rol AS rol
         LIMIT 5
@@ -468,27 +468,36 @@ class Neo4jRepository:
         Además devuelve las habilidades coincidentes.
         """
         query = """
-        // 1️⃣ Buscar relaciones entre la persona y los skills que los jobs requieren o desean
+        // 1️⃣ Encontrar los trabajos que tienen skills en común con la persona
         MATCH (p:Person {id: $pid})-[r:POSEE_HABILIDAD]->(s:Skill)
-        OPTIONAL MATCH (s)<-[rel1:REQUERIMIENTO_DE]-(job:Job)
-        OPTIONAL MATCH (s)<-[rel2:DESEA]-(job)
+        MATCH (job:Job)
+        WHERE EXISTS((job)-[:REQUERIMIENTO_DE|DESEA]->(s))
         
-        // 2️⃣ Calcular los puntajes parciales
-        WITH p, job, s,
+        // 2️⃣ Calcular coincidencias por tipo de requisito
+        WITH p, job, s, 
              COALESCE(r.nivel, 1) AS nivelPersona,
-             CASE WHEN rel1 IS NOT NULL THEN 2.0 ELSE 0 END AS pesoReq,
-             CASE WHEN rel2 IS NOT NULL THEN 1.0 ELSE 0 END AS pesoDesea
+             EXISTS((job)-[:REQUERIMIENTO_DE]->(s)) AS esRequerida,
+             EXISTS((job)-[:DESEA]->(s)) AS esDeseada
              
-        // 3️⃣ Calcular score total por job
-        WITH job, COLLECT(s.nombre) AS habilidadesCoincidentes,
-             SUM(nivelPersona * (pesoReq + pesoDesea)) AS afinidad
-        WHERE job IS NOT NULL AND afinidad > 0
+        // 3️⃣ Calcular score total por trabajo
+        WITH job,
+             COLLECT(DISTINCT s.nombre) AS habilidadesCoincidentes,
+             SUM(
+                 nivelPersona * CASE 
+                     WHEN esRequerida THEN 2.0
+                     WHEN esDeseada THEN 1.0
+                     ELSE 0
+                 END
+             ) AS afinidad,
+             COUNT(DISTINCT s) as cantidadSkills
+        WHERE cantidadSkills > 0
         
+        // 4️⃣ Devolver resultados ordenados por afinidad
         RETURN job.id AS jobId,
                job.titulo AS titulo,
                job.descripcion AS descripcion,
                habilidadesCoincidentes,
-               ROUND(afinidad, 2) AS score
+               ROUND(afinidad * (1.0 + cantidadSkills/10.0), 2) AS score
         ORDER BY score DESC
         LIMIT $limit
         """

@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 from src.models.person_model import PersonIn, PersonOut
 from src.models.connection_model import ConnectionIn
 from src.services.people_service import PeopleService
+from src.utils.redis_stats import record_profile_view
 
 router = APIRouter(prefix="/people", tags=["People"])
 svc = PeopleService()
@@ -20,20 +21,61 @@ def create_person(person: PersonIn):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/", response_model=List[PersonOut])
+@router.get("/")
 def list_people():
+    """Lista personas. Devolvemos la lista cruda para evitar fallos de validación
+    si hay documentos antiguos sin todos los campos esperados por `PersonOut`.
+    """
     try:
-        return svc.list({})
+        items = svc.list({})
+        # Asegurar serialización de _id a string (por si el repo lo dejó como ObjectId)
+        from bson import ObjectId
+        for d in items:
+            if "_id" in d and isinstance(d["_id"], ObjectId):
+                d["_id"] = str(d["_id"])
+        return items
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{person_id}", response_model=PersonOut)
+@router.get("/{person_id}")
 def get_person(person_id: str):
-    person = svc.get(person_id)
-    if not person:
-        raise HTTPException(status_code=404, detail="Persona no encontrada")
-    return person
+    """Devuelve el documento de persona sin validación Pydantic estricta.
+    Esto evita errores 500 cuando hay documentos antiguos que no tienen todos
+    los campos esperados por `PersonOut`.
+    """
+    try:
+        person = svc.get(person_id)
+        if not person:
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+
+        # serializar _id si está como ObjectId
+        try:
+            from bson import ObjectId
+            if "_id" in person and isinstance(person["_id"], ObjectId):
+                person["_id"] = str(person["_id"])
+        except Exception:
+            pass
+
+        # Asegurar claves de timestamps para clientes (pueden ser None)
+        person.setdefault("creadoEn", None)
+        person.setdefault("actualizadoEn", None)
+
+        # Registrar vista de perfil en Redis (conteo simple por llamada)
+        try:
+            # Preferir userId (id usado en Neo4j) si está disponible, sino usar _id
+            node_id = person.get("userId") or person.get("_id")
+            if node_id:
+                record_profile_view(str(node_id))
+        except Exception:
+            # no queremos que un fallo en Redis rompa la ruta
+            pass
+
+        return person
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/{person_id}", response_model=PersonOut)

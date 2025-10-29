@@ -11,6 +11,20 @@ class PeopleService:
         self.repo = MongoRepository("people")
         self.graph_repo = Neo4jRepository()
 
+    def _resolve_person_node_id(self, person_id: str) -> str:
+        """
+        Devuelve el id que se usa en Neo4j para una persona.
+        Normalmente es el userId (id del usuario). Si la consulta directa
+        a Neo4j con `person_id` no devuelve resultados, intentamos buscar
+        en la colección people por _id y devolver su userId cuando exista.
+        """
+        # Primero intentamos usar tal cual (caller puede pasar userId ya)
+        try:
+            return str(person_id)
+        except Exception:
+            pass
+        return person_id
+
     # ==============================================
     # 👤 CRUD
     # ==============================================
@@ -275,19 +289,64 @@ class PeopleService:
 
     def get_network(self, person_id: str):
         try:
-            return self.graph_repo.get_network(person_id)
+            # Intentar consulta directa
+            res = self.graph_repo.get_network(person_id)
+            if res:
+                return res
+
+            # Fallback: si no encontramos nada, intentar resolver person_id -> userId
+            try:
+                # buscar documento people por _id
+                candidate = self.repo.find_one(person_id)
+                if candidate and candidate.get("userId"):
+                    resolved = str(candidate.get("userId"))
+                    res2 = self.graph_repo.get_network(resolved)
+                    return res2
+            except Exception:
+                pass
+
+            return []
         except Exception as e:
             raise Exception(f"Error obteniendo red de conexiones: {e}")
 
     def get_common_connections(self, person_id: str, other_id: str):
         try:
-            return self.graph_repo.get_common_connections(person_id, other_id)
+            res = self.graph_repo.get_common_connections(person_id, other_id)
+            if res:
+                return res
+
+            # Fallbacks: intentar resolver ambos ids desde people._id -> userId
+            try:
+                p1 = self.repo.find_one(person_id)
+                p2 = self.repo.find_one(other_id)
+                pid1 = p1.get("userId") if p1 and p1.get("userId") else person_id
+                pid2 = p2.get("userId") if p2 and p2.get("userId") else other_id
+                res2 = self.graph_repo.get_common_connections(str(pid1), str(pid2))
+                return res2
+            except Exception:
+                pass
+
+            return []
         except Exception as e:
             raise Exception(f"Error obteniendo conexiones en común: {e}")
 
     def get_suggested_connections(self, person_id: str):
         try:
-            return self.graph_repo.get_suggested_connections(person_id)
+            res = self.graph_repo.get_suggested_connections(person_id)
+            if res:
+                return res
+
+            # Fallback: resolver person_id a userId si fue pasado _id
+            try:
+                candidate = self.repo.find_one(person_id)
+                if candidate and candidate.get("userId"):
+                    resolved = str(candidate.get("userId"))
+                    res2 = self.graph_repo.get_suggested_connections(resolved)
+                    return res2
+            except Exception:
+                pass
+
+            return []
         except Exception as e:
             raise Exception(f"Error obteniendo sugerencias: {e}")
 

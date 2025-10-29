@@ -125,15 +125,18 @@ class CourseService:
         updates = dict(updates or {})
         updates["updatedAt"] = self._now()
 
-        # 🔴 Antes: self.repo.update(course_id, updates)  --> podía hacer replace/upsert
-        # ✅ Ahora: enviamos un update con operador
-        mongo_update = {"$set": updates}
-
-        # si tu repo tiene update_by_id, usalo; si no, usa update tal cual
-        if hasattr(self.repo, "update_by_id"):
-            doc = self.repo.update_by_id(course_id, mongo_update)
-        else:
-            doc = self.repo.update(course_id, mongo_update)
+        # El repositorio ya aplica $set dentro de su método update(),
+        # por lo que debemos pasarle el diccionario de campos directamente.
+        # Evitamos envolver en {"$set": ...} para no producir un update inválido.
+        try:
+            doc = self.repo.update(course_id, updates)
+        except Exception:
+            # Fallback por compatibilidad si el repo expone otra API
+            if hasattr(self.repo, "update_by_id"):
+                doc = self.repo.update_by_id(course_id, updates)
+            else:
+                # re-lanzar la excepción para que el caller vea el error
+                raise
 
         out = self._clean_doc(doc)
         if not out:

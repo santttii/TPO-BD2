@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any
 from src.models.job_model import JobIn, JobOut
 from src.services.job_service import JobService
@@ -46,29 +46,13 @@ def delete_job(job_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{job_id}/apply/me")
-def apply_to_job(job_id: str, request: Request):
+@router.post("/{job_id}/apply/{person_id}")
+def apply_to_job(job_id: str, person_id: str):
     """
-    Crea una postulación (Person -> Job). Requiere sesión válida y que el
-    person_id en la URL coincida con la sesión.
+    Crea una postulación (Person -> Job)
     """
-    if not getattr(request, "state", None) or not request.state.user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
-    # Buscar la persona vinculada al user en sesión y usar su Mongo _id
-    from src.services.people_service import PeopleService
-    people_svc = PeopleService()
-    found = people_svc.list({"userId": request.state.user_id})
-    if not found:
-        raise HTTPException(status_code=404, detail="Persona no encontrada")
-    # Para sincronizar con Neo4j usamos el id que se usó como id del nodo.
-    # Las personas creadas en el registro tienen `userId` como id del nodo en Neo4j;
-    # si no existe, usamos el _id de Mongo.
-    person_doc = found[0]
-    target_person_id = person_doc.get("userId") or person_doc.get("_id")
-
     try:
-        return svc.apply(target_person_id, job_id)
+        return svc.apply(person_id, job_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

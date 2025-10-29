@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from src.repositories.mongo_repository import MongoRepository
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.utils.redis_stats import record_application
 
 
 class JobService:
@@ -16,14 +17,15 @@ class JobService:
     def create(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         job = self.repo.create(payload)
         job_id = str(job["_id"])
+
         try:
-            # 1️⃣ Crear nodo Job
+            # Crear nodo Job en Neo4j
             self.graph_repo.create_job_node(
                 job_id=job_id,
                 titulo=payload["titulo"],
                 empresa_id=payload["empresaId"]
             )
-            # 2️⃣ Crear relaciones con Skills
+            # Vincular requisitos en Neo4j
             requisitos = payload.get("requisitos", {})
             obligatorios = requisitos.get("obligatorios", []) if isinstance(requisitos, dict) else []
             deseables = requisitos.get("deseables", []) if isinstance(requisitos, dict) else []
@@ -33,6 +35,7 @@ class JobService:
                 self.graph_repo.link_job_to_skill(job_id, skill, tipo="DESEA")
         except Exception as e:
             print(f"⚠️ Error creando nodo Job y relaciones en Neo4j: {e}")
+
         job["_id"] = job_id
         return job
 
@@ -135,7 +138,7 @@ class JobService:
             if not person_doc:
                 raise Exception("Persona no encontrada en MongoDB")
 
-            # Determinar nodo id que usamos en Neo4j (preferir userId si está)
+            # Determinar nodo id que usamos en Neo4j (preferir userId)
             node_person_id = person_doc.get("userId") or str(person_doc.get("_id"))
             nombre = person_doc.get("datosPersonales", {}).get("nombre", "Desconocido")
             rol = person_doc.get("rol", "Sin Rol")
@@ -148,8 +151,6 @@ class JobService:
             self.graph_repo.apply_to_job(node_person_id, job_id)
 
             # 🔹 4) Registrar la postulación en MongoDB usando el person _id (string)
-            #    y también guardar el person_user_id (userId) si existe. Mantener ambos
-            #    campos evita romper consultas y facilita migraciones.
             person_mongo_id = str(person_doc.get("_id"))
             person_user_id = person_doc.get("userId")
             data = {
@@ -162,6 +163,12 @@ class JobService:
             }
             application = self.applications_repo.create(data)
 
+            # Record statistics in Redis (applications per job/person)
+            try:
+                record_application(person_mongo_id, job_id)
+            except Exception:
+                pass
+
             return {
                 "message": f"Persona {person_id} se postuló al job {job_id}",
                 "person_id": person_id,
@@ -172,3 +179,4 @@ class JobService:
 
         except Exception as e:
             raise Exception(f"Error creando postulación: {e}")
+

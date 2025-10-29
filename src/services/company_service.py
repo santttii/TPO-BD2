@@ -1,6 +1,7 @@
 from typing import Dict, Any, List, Optional
 from src.repositories.mongo_repository import MongoRepository
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.repositories.mongo_repository import MongoRepository as PeopleMongoRepo
 
 
 class CompanyService:
@@ -40,10 +41,28 @@ class CompanyService:
         """
         Retorna las empresas creadas por el usuario autenticado.
         """
-        companies = self.repo.find({"created_by": user_id})
-        for c in companies:
-            c["_id"] = str(c["_id"])
-        return companies
+        # Intentar buscar por created_by como string
+        try:
+            companies = self.repo.find({"created_by": user_id})
+            if companies:
+                for c in companies:
+                    c["_id"] = str(c["_id"])
+                return companies
+        except Exception:
+            pass
+
+        # Fallback: si el user_id fue guardado como ObjectId en documentos antiguos,
+        # intentar convertir y buscar por ObjectId(user_id)
+        try:
+            from bson import ObjectId
+            oid = ObjectId(user_id)
+            companies = self.repo.find({"created_by": oid})
+            for c in companies:
+                c["_id"] = str(c["_id"])
+            return companies
+        except Exception:
+            # si todo falla, devolver lista vacía
+            return []
 
     # ===============================================================
     # 🔎 GET BY ID (solo si es dueño)
@@ -52,7 +71,9 @@ class CompanyService:
         company = self.repo.find_one(company_id)
         if company:
             company["_id"] = str(company["_id"])
-            if user_id and company.get("created_by") != user_id:
+            # Normalizar created_by para comparar string/ObjectId sin errores
+            created_by = company.get("created_by")
+            if user_id and str(created_by) != str(user_id):
                 raise PermissionError("Not authorized to access this company")
         return company
 
@@ -63,7 +84,8 @@ class CompanyService:
         company = self.repo.find_one(company_id)
         if not company:
             return None
-        if company.get("created_by") != user_id:
+        # Normalizar created_by para evitar mismatch ObjectId vs string
+        if str(company.get("created_by")) != str(user_id):
             raise PermissionError("Not authorized to modify this company")
 
         updated = self.repo.update(company_id, updates)
@@ -87,7 +109,8 @@ class CompanyService:
         company = self.repo.find_one(company_id)
         if not company:
             return False
-        if company.get("created_by") != user_id:
+        # Normalizar created_by para evitar mismatch ObjectId vs string
+        if str(company.get("created_by")) != str(user_id):
             raise PermissionError("Not authorized to delete this company")
 
         deleted = self.repo.delete(company_id)
@@ -106,6 +129,21 @@ class CompanyService:
         Crea una relación (Person)-[:TRABAJA_EN]->(Company)
         """
         try:
+            # Si el nodo Person no existe con el id proporcionado, intentar resolverlo
+            # a partir de la colección people (buscar userId o _id).
+            if not self.graph_repo.node_exists("Person", person_id):
+                # intentar encontrar en Mongo (people) si se pasó un _id de persona
+                try:
+                    people_repo = PeopleMongoRepo("people")
+                    # buscar por _id
+                    candidate = people_repo.find_one(person_id)
+                    if candidate and candidate.get("userId"):
+                        resolved = str(candidate.get("userId"))
+                        person_id = resolved
+                except Exception:
+                    # si falla, seguimos con el id original
+                    pass
+
             self.graph_repo.link_person_to_company(person_id, company_id, role)
             return {
                 "message": f"Persona {person_id} vinculada a empresa {company_id}",

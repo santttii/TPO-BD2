@@ -11,4 +11,3 @@ pydantic
 
 # Utilidades
 python-dotenv # Para cargar el archivo .env
-passlib[bcrypt]

@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+.env
+/.vscode/
+/.idea/
+dist/
+build/
+__pycache__/
+# Carpetas locales
+data/
+.env
+_pycache_/
+
+# Archivos del sistema
+.vscode/
+.idea/
+.DS_Store

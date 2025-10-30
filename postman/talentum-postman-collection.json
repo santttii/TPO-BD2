@@ -1,0 +1,241 @@
+{
+  "info": {
+    "name": "Talentum+ - Full API Collection",
+    "_postman_id": "talentum-full",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Comprehensive collection for the Talentum+ API (local). Includes Auth, People, Companies, Jobs, Applications, Courses, Enrollments and Stats. (cleaned: removed /stats/top endpoints)"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
+    { "key": "test_username", "value": "" },
+    { "key": "test_password", "value": "P@ssw0rd123!" },
+    { "key": "sessionToken", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "person_mongo_id", "value": "" },
+    { "key": "person_user_id", "value": "" },
+    { "key": "companyId", "value": "" },
+    { "key": "jobId", "value": "" },
+    { "key": "applicationId", "value": "" },
+    { "key": "courseId", "value": "" },
+    { "key": "enrollmentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/" }
+    },
+    {
+      "info": {
+        "name": "Talentum+ - Full API Collection",
+        "_postman_id": "talentum-full",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "description": "Comprehensive collection for the Talentum+ API (local). Includes Auth, People, Companies, Jobs, Applications, Courses, Enrollments and Stats. (cleaned: removed /stats/top endpoints)"
+      },
+      "variable": [
+        { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
+        { "key": "test_username", "value": "" },
+        { "key": "test_password", "value": "P@ssw0rd123!" },
+        { "key": "sessionToken", "value": "" },
+        { "key": "userId", "value": "" },
+        { "key": "person_mongo_id", "value": "" },
+        { "key": "person_user_id", "value": "" },
+        { "key": "companyId", "value": "" },
+        { "key": "jobId", "value": "" },
+        { "key": "applicationId", "value": "" },
+        { "key": "courseId", "value": "" },
+        { "key": "enrollmentId", "value": "" }
+      ],
+      "item": [
+        { "name": "Health", "request": { "method": "GET", "url": "{{baseUrl}}/" } },
+        {
+          "name": "Auth - Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"username\": \"{{test_username}}\", \"password\": \"{{test_password}}\" }" },
+            "url": "{{baseUrl}}/auth/register"
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["if (!pm.environment.get('test_username') || pm.environment.get('test_username')==='') { pm.environment.set('test_username','test_'+Math.floor(Math.random()*1000000)); }"] } },
+            { "listen": "test", "script": { "exec": ["pm.test('registered', function(){ pm.response.to.have.status(200) }); var json = pm.response.json(); if (json.id) pm.environment.set('userId', json.id); if (json.username) pm.environment.set('test_username', json.username);"] } }
+          ]
+        },
+        {
+          "name": "Auth - Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"username\": \"{{test_username}}\", \"password\": \"{{test_password}}\" }" },
+            "url": "{{baseUrl}}/auth/login"
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('login ok', function(){ pm.response.to.have.status(200) }); var json = pm.response.json(); var token = json.token || json.sessionId; if (token) pm.environment.set('sessionToken', token); if (json.id) pm.environment.set('userId', json.id);"] } }
+          ]
+        },
+        {
+          "name": "People - GET /me",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/people/me" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('profile found', function(){ pm.response.to.have.status(200) }); var j=pm.response.json(); if (j._id) pm.environment.set('person_mongo_id', j._id); if (j.userId) pm.environment.set('person_user_id', j.userId);"] } }]
+        },
+        { "name": "People - PUT /me (update profile)", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "body": { "mode": "raw", "raw": "{ \"datosPersonales\": { \"nombre\": \"Test User\" }, \"perfil\": { \"bio\": \"Testing\", \"skills\": [{ \"nombre\": \"Python\", \"nivel\": 4 }] } }" }, "url": "{{baseUrl}}/people/me" } ,
+        { "name": "Companies - Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "body": { "mode": "raw", "raw": "{ \"nombre\": \"TestCo {{__rand}}\", \"industria\": \"Software\", \"pais\": \"AR\", \"ciudad\": \"Córdoba\" }" }, "url": "{{baseUrl}}/companies" }, "event": [{ "listen": "prerequest", "script": { "exec": ["pm.environment.set('__rand', Math.floor(Math.random()*1000000))"] } }, { "listen": "test", "script": { "exec": ["pm.test('company created', function(){ pm.response.to.have.status(200) }); var j=pm.response.json(); if (j._id) pm.environment.set('companyId', j._id); else if (j.id) pm.environment.set('companyId', j.id);"] } }] },
+        { "name": "Jobs - Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "body": { "mode": "raw", "raw": "{ \"titulo\": \"Backend Dev (smoke)\", \"descripcion\": \"Job for smoke tests\", \"ubicacion\": \"Remote\", \"salario\": 1200, \"empresaId\": \"{{companyId}}\" }" }, "url": "{{baseUrl}}/jobs" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('job created', function(){ pm.response.to.have.status(200) }); var j=pm.response.json(); if (j._id) pm.environment.set('jobId', j._id); else if (j.id) pm.environment.set('jobId', j.id);"] } }] },
+        { "name": "Jobs - Apply (me)", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/jobs/{{jobId}}/apply/me" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('apply ok', function(){ pm.response.to.have.status(200) }); var j=pm.response.json(); if (j.application_id) pm.environment.set('applicationId', j.application_id); else if (j.applicationId) pm.environment.set('applicationId', j.applicationId);"] } }] },
+        { "name": "Jobs - List Applicants", "request": { "method": "GET", "url": "{{baseUrl}}/jobs/{{jobId}}/applicants" },
+          "event": [] },
+        { "name": "Applications - Get by Person (me)", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/applications/person/me" } ,
+        { "name": "Applications - Update Estado", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "body": { "mode": "raw", "raw": "{ \"estado\": \"en entrevista\", \"observacion\": \"Primera ronda\" }" }, "url": "{{baseUrl}}/applications/{{applicationId}}/estado" },
+        { "name": "Courses - Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"titulo\": \"Intro to Testing\", \"descripcion\": \"Curso de prueba\", \"dificultad\": \"Beginner\" }" }, "url": "{{baseUrl}}/courses" },
+        { "name": "Enroll - Enroll me", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/courses/{{courseId}}/enroll/me" },
+        { "name": "Stats - Person Stats", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/stats/person/{{person_user_id}}" }
+      ]
+    }
+      "request": { "method": "GET", "url": "{{baseUrl}}/jobs/{{jobId}}/applicants" }
+    },
+    {
+      "name": "Applications - Get by Person (me)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/applications/person/me" }
+    },
+    {
+      "name": "Applications - Update Estado",
+      "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "body": { "mode": "raw", "raw": "{ \"estado\": \"en entrevista\", \"observacion\": \"Primera ronda\" }" }, "url": "{{baseUrl}}/applications/{{applicationId}}/estado" }
+    },
+    {
+      "name": "Courses - Create",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"titulo\": \"Intro to Testing\", \"descripcion\": \"Curso de prueba\", \"dificultad\": \"Beginner\" }" }, "url": "{{baseUrl}}/courses" }
+    },
+    {
+      "name": "Enroll - Enroll me",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/courses/{{courseId}}/enroll/me" }
+    },
+    {
+      "name": "Stats - Person Stats",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/stats/person/{{person_user_id}}" }
+    }
+  ]
+}
+{
+  "info": {
+    "name": "Talentum+ - Full API Collection",
+    "_postman_id": "talentum-full",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Comprehensive collection for the Talentum+ API (local). Includes Auth, People, Companies, Jobs, Applications, Courses, Enrollments and Stats."
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
+    { "key": "test_username", "value": "" },
+    { "key": "test_password", "value": "P@ssw0rd123!" },
+    { "key": "sessionToken", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "person_mongo_id", "value": "" },
+    { "key": "person_user_id", "value": "" },
+    { "key": "companyId", "value": "" },
+    { "key": "jobId", "value": "" },
+    { "key": "applicationId", "value": "" },
+    { "key": "courseId", "value": "" },
+    { "key": "enrollmentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/" }
+    },
+    {
+      "name": "Auth - Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{ \"username\": \"{{test_username}}\", \"password\": \"{{test_password}}\" }" },
+        "url": "{{baseUrl}}/auth/register"
+      },
+      "event": [
+        { "listen": "prerequest", "script": { "exec": ["if (!pm.environment.get('test_username') || pm.environment.get('test_username')==='') { pm.environment.set('test_username','test_'+Math.floor(Math.random()*1000000)); }"] } },
+        { "listen": "test", "script": { "exec": ["pm.test('registered', function(){ pm.response.to.have.status(200) }); var json = pm.response.json(); if (json.id) pm.environment.set('userId', json.id); if (json.username) pm.environment.set('test_username', json.username);"] } }
+      ]
+    },
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{ \"username\": \"{{test_username}}\", \"password\": \"{{test_password}}\" }" },
+        "url": "{{baseUrl}}/auth/login"
+      },
+      "event": [
+        { "listen": "test", "script": { "exec": ["pm.test('login ok', function(){ pm.response.to.have.status(200) }); var json = pm.response.json(); var token = json.token || json.sessionId; if (token) pm.environment.set('sessionToken', token); if (json.id) pm.environment.set('userId', json.id);"] } }
+      ]
+    },
+    {
+      "name": "People - GET /me",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/people/me" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('profile found', function(){ pm.response.to.have.status(200) }); var j=pm.response.json(); if (j._id) pm.environment.set('person_mongo_id', j._id); if (j.userId) pm.environment.set('person_user_id', j.userId);"] } }]
+    },
+    {
+      "name": "People - PUT /me (update profile)",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+        "body": { "mode": "raw", "raw": "{ \"datosPersonales\": { \"nombre\": \"Test User\" }, \"perfil\": { \"bio\": \"Testing\", \"skills\": [{ \"nombre\": \"Python\", \"nivel\": 4 }] } }" },
+        "url": "{{baseUrl}}/people/me"
+      }
+    },
+    {
+      "name": "Companies - Create",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+        "body": { "mode": "raw", "raw": "{ \"nombre\": \"TestCo {{__rand}}\", \"industria\": \"Software\", \"pais\": \"AR\", \"ciudad\": \"Córdoba\" }" },
+        "url": "{{baseUrl}}/companies"
+      },
+      "event": [{ "listen": "prerequest", "script": { "exec": ["pm.environment.set('__rand', Math.floor(Math.random()*1000000))"] } }, { "listen": "test", "script": { "exec": ["pm.test('company created', function(){ pm.response.to.have.status(200) }); var j=pm.response.json(); if (j._id) pm.environment.set('companyId', j._id); else if (j.id) pm.environment.set('companyId', j.id);"] } }]
+    },
+    {
+      "name": "Jobs - Create",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+        "body": { "mode": "raw", "raw": "{ \"titulo\": \"Backend Dev (smoke)\", \"descripcion\": \"Job for smoke tests\", \"ubicacion\": \"Remote\", \"salario\": 1200, \"empresaId\": \"{{companyId}}\" }" },
+        "url": "{{baseUrl}}/jobs"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('job created', function(){ pm.response.to.have.status(200) }); var j=pm.response.json(); if (j._id) pm.environment.set('jobId', j._id); else if (j.id) pm.environment.set('jobId', j.id);"] } }]
+    },
+    {
+      "name": "Jobs - Apply (me)",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/jobs/{{jobId}}/apply/me" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('apply ok', function(){ pm.response.to.have.status(200) }); var j=pm.response.json(); if (j.application_id) pm.environment.set('applicationId', j.application_id); else if (j.applicationId) pm.environment.set('applicationId', j.applicationId);"] } }]
+    },
+    {
+      "name": "Jobs - List Applicants",
+      "request": { "method": "GET", "url": "{{baseUrl}}/jobs/{{jobId}}/applicants" }
+    },
+    {
+      "name": "Applications - Get by Person (me)",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/applications/person/me" }
+    },
+    {
+      "name": "Applications - Update Estado",
+      "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "body": { "mode": "raw", "raw": "{ \"estado\": \"en entrevista\", \"observacion\": \"Primera ronda\" }" }, "url": "{{baseUrl}}/applications/{{applicationId}}/estado" }
+    },
+    {
+      "name": "Courses - Create",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"titulo\": \"Intro to Testing\", \"descripcion\": \"Curso de prueba\", \"dificultad\": \"Beginner\" }" }, "url": "{{baseUrl}}/courses" }
+    },
+    {
+      "name": "Enroll - Enroll me",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/courses/{{courseId}}/enroll/me" }
+    },
+    {
+      "name": "Stats - Top Jobs by Applications",
+      "request": { "method": "GET", "url": "{{baseUrl}}/stats/top/applications" }
+    },
+    {
+      "name": "Stats - Top People by Connections",
+      "request": { "method": "GET", "url": "{{baseUrl}}/stats/top/people/connections" }
+    },
+    
+    {
+      "name": "Stats - Person Stats",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }], "url": "{{baseUrl}}/stats/person/{{person_user_id}}" }
+    }
+  ]
+}

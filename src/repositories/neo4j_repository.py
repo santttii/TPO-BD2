@@ -542,6 +542,7 @@ class Neo4jRepository:
             result = session.run(query, skill=skill_name, min_level=min_level)
             return [dict(r) for r in result]
 
+
     # ===============================================================
     # 📚 MÉTODOS DE CURSOS (sin lambda, sin execute_write)
     # ===============================================================

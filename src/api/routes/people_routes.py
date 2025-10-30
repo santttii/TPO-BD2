@@ -265,7 +265,6 @@ def get_people_by_skill(skill_name: str, min_level: int = Query(1, ge=1, le=5, d
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("/{person_id}", response_model=PersonOut)
 def get_person_by_id(person_id: str, request: Request):
     """

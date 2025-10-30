@@ -275,3 +275,4 @@ class PeopleService:
             return self.graph_repo.get_people_by_skill(skill_name, min_level)
         except Exception as e:
             raise Exception(f"Error obteniendo personas por habilidad: {e}")
+    

@@ -1,12 +1,5 @@
-from typing import List, Tuple, Optional
+from typing import Optional
 from src.config.database import get_redis_client
-
-
-def _zrevrange_with_scores(name: str, top: int) -> List[Tuple[str, float]]:
-    r = get_redis_client()
-    items = r.zrevrange(name, 0, top - 1, withscores=True)
-    # return list of (member, score)
-    return [(m, float(s)) for m, s in items]
 
 
 def record_application(person_id: str, job_id: str):
@@ -34,35 +27,9 @@ def record_job_view(job_id: str):
     r.zincrby("job_views", 1, job_id)
 
 
-def top_jobs_by_applications(top: int = 10) -> List[Tuple[str, float]]:
-    return _zrevrange_with_scores("applications_by_job", top)
-
-
-def top_people_by_applications(top: int = 10) -> List[Tuple[str, float]]:
-    return _zrevrange_with_scores("applications_by_person", top)
-
-
-def top_people_by_connections(top: int = 10) -> List[Tuple[str, float]]:
-    return _zrevrange_with_scores("connections_count", top)
-
-
-def top_profile_views(top: int = 10) -> List[Tuple[str, float]]:
-    return _zrevrange_with_scores("profile_views", top)
-
-
 def person_stats(person_id: str) -> dict:
     r = get_redis_client()
     apps = r.zscore("applications_by_person", person_id) or 0
-
-
-def job_stats(job_id: str) -> dict:
-    r = get_redis_client()
-    applications = r.zscore("applications_by_job", job_id) or 0
-    views = r.zscore("job_views", job_id) or 0
-    return {
-        "applications": int(applications),
-        "views": int(views)
-    }
     conns = r.zscore("connections_count", person_id) or 0
     views = r.zscore("profile_views", person_id) or 0
     return {
@@ -70,4 +37,14 @@ def job_stats(job_id: str) -> dict:
         "applications": int(float(apps)),
         "connections": int(float(conns)),
         "profile_views": int(float(views)),
+    }
+
+
+def job_stats(job_id: str) -> dict:
+    r = get_redis_client()
+    applications = r.zscore("applications_by_job", job_id) or 0
+    views = r.zscore("job_views", job_id) or 0
+    return {
+        "applications": int(float(applications)),
+        "views": int(float(views))
     }

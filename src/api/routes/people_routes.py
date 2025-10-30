@@ -223,19 +223,6 @@ def get_applications(request: Request = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/me/jobs/recommendations", tags=["People"])
-def get_job_recommendations(request: Request):
-    """
-    Retorna los empleos más afines según las habilidades de la persona.
-    """
-    try:
-        service = PeopleService()
-        uid = request.state.user_id
-        recommendations = service.get_recommendations(uid)
-        return {"person_id": uid, "recommendations": recommendations}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.get("/me/skills")
 def get_person_skills(request: Request):
     """

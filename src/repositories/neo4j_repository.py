@@ -19,13 +19,14 @@ class Neo4jRepository:
     def create_person_node(self, person_id: str, nombre: str, rol: str):
         """
         Crea (si no existe) el nodo de Persona en Neo4j.
+        El id es único, pero establecemos nombre y rol inmediatamente.
         """
         with self.driver.session() as session:
             session.run(
                 """
                 MERGE (p:Person {id: $pid})
-                SET p.nombre = $nombre,
-                    p.rol = $rol
+                ON CREATE SET p.nombre = $nombre, p.rol = $rol
+                ON MATCH SET p.nombre = $nombre, p.rol = $rol
                 """,
                 pid=person_id,
                 nombre=nombre,
@@ -170,12 +171,18 @@ class Neo4jRepository:
         """
         Devuelve personas sugeridas que no están conectadas directamente,
         pero comparten al menos una conexión en común.
+        Ordenadas por relevancia (cantidad de amigos en común).
         """
         query = """
-        MATCH (p:Person {id: $id})-[]->(AMISTAD:Person)-[]->(sugerido:Person)
+        MATCH (p:Person {id: $id})-[]->(amigo:Person)-[]->(sugerido:Person)
         WHERE NOT (p)-[]-(sugerido) AND p <> sugerido
-        RETURN DISTINCT sugerido.id AS id, sugerido.nombre AS nombre, sugerido.rol AS rol
-        LIMIT 5
+        WITH sugerido, COUNT(DISTINCT amigo) AS amigosEnComun
+        RETURN sugerido.id AS id, 
+               sugerido.nombre AS nombre, 
+               sugerido.rol AS rol,
+               amigosEnComun
+        ORDER BY amigosEnComun DESC
+        LIMIT 10
         """
         with self.driver.session() as session:
             result = session.run(query, id=person_id)
@@ -632,3 +639,26 @@ class Neo4jRepository:
         with self.driver.session() as session:
             session.run(q, pid=str(person_id), cid=str(course_id),
                         nota=nota, certUrl=certificacionUrl).consume()
+
+    def sync_all_person_names(self, people_list):
+        """
+        Sincroniza los nombres de todas las personas en Neo4j desde MongoDB.
+        people_list: lista de diccionarios con userId, nombre y rol
+        """
+        with self.driver.session() as session:
+            for person in people_list:
+                person_id = person.get("userId") or person.get("_id")
+                nombre = person.get("datosPersonales", {}).get("nombre", "Desconocido")
+                rol = person.get("rol", "Usuario")
+                
+                if person_id:
+                    session.run(
+                        """
+                        MERGE (p:Person {id: $pid})
+                        SET p.nombre = $nombre,
+                            p.rol = $rol
+                        """,
+                        pid=str(person_id),
+                        nombre=nombre,
+                        rol=rol
+                    )

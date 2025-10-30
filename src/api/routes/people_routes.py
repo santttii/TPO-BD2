@@ -285,3 +285,34 @@ def get_person_by_id(person_id: str, request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===============================================
+# 🔧 UTILIDADES DE ADMINISTRACIÓN
+# ===============================================
+
+@router.post("/sync-names-to-neo4j")
+def sync_names_to_neo4j(request: Request):
+    """
+    Sincroniza los nombres de todas las personas desde MongoDB a Neo4j.
+    Útil para actualizar los nodos existentes con sus nombres.
+    Requiere autenticación.
+    """
+    if not getattr(request, "state", None) or not request.state.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        # Obtener todas las personas de MongoDB
+        all_people = svc.list({})
+        
+        # Sincronizar en Neo4j
+        from src.repositories.neo4j_repository import Neo4jRepository
+        neo_repo = Neo4jRepository()
+        neo_repo.sync_all_person_names(all_people)
+        
+        return {
+            "message": "Nombres sincronizados exitosamente",
+            "count": len(all_people)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

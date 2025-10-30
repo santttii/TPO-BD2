@@ -131,10 +131,23 @@ class PeopleService:
                 node_id = str(node_id)
 
                 # Actualizar propiedades básicas del nodo
-                nombre = updated.get("datosPersonales", {}).get("nombre") or updates.get("datosPersonales", {}).get("nombre")
-                rol = updated.get("rol") or updates.get("rol")
+                # Obtener el nombre actual o el actualizado
+                nombre = None
+                if "datosPersonales" in updates and "nombre" in updates["datosPersonales"]:
+                    nombre = updates["datosPersonales"]["nombre"]
+                elif "datosPersonales" in updated and "nombre" in updated["datosPersonales"]:
+                    nombre = updated["datosPersonales"]["nombre"]
+                
+                # Obtener el rol actual o actualizado
+                rol = updates.get("rol") or updated.get("rol")
+                
+                # Siempre actualizar el nodo si hay cambios en nombre o rol
                 if nombre or rol:
-                    self.graph_repo.create_person_node(person_id=node_id, nombre=nombre or "Desconocido", rol=rol or "Sin Rol")
+                    self.graph_repo.create_person_node(
+                        person_id=node_id, 
+                        nombre=nombre or "Desconocido", 
+                        rol=rol or "Sin Rol"
+                    )
 
                 # Reconstruir habilidades si se enviaron en la actualización
                 habilidades = []

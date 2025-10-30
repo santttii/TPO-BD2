@@ -29,6 +29,11 @@ def record_profile_view(person_id: str):
     r.zincrby("profile_views", 1, person_id)
 
 
+def record_job_view(job_id: str):
+    r = get_redis_client()
+    r.zincrby("job_views", 1, job_id)
+
+
 def top_jobs_by_applications(top: int = 10) -> List[Tuple[str, float]]:
     return _zrevrange_with_scores("applications_by_job", top)
 
@@ -48,6 +53,16 @@ def top_profile_views(top: int = 10) -> List[Tuple[str, float]]:
 def person_stats(person_id: str) -> dict:
     r = get_redis_client()
     apps = r.zscore("applications_by_person", person_id) or 0
+
+
+def job_stats(job_id: str) -> dict:
+    r = get_redis_client()
+    applications = r.zscore("applications_by_job", job_id) or 0
+    views = r.zscore("job_views", job_id) or 0
+    return {
+        "applications": int(applications),
+        "views": int(views)
+    }
     conns = r.zscore("connections_count", person_id) or 0
     views = r.zscore("profile_views", person_id) or 0
     return {

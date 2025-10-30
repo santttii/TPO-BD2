@@ -6,6 +6,7 @@ from src.utils.redis_stats import (
     top_people_by_connections,
     top_profile_views,
     person_stats,
+    job_stats,
 )
 from src.repositories.mongo_repository import MongoRepository
 
@@ -63,5 +64,18 @@ def get_my_stats(request: Request):
     try:
         # Todos los contadores se guardan bajo userId; por lo tanto consultamos por userId
         return person_stats(request.state.user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/job/{job_id}")
+def get_job_stats(job_id: str):
+    """
+    Obtiene las estadísticas de un trabajo específico:
+    - Número de postulaciones
+    - Número de vistas
+    """
+    try:
+        return job_stats(job_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

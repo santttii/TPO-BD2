@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from typing import List, Dict, Any
 from src.models.job_model import JobIn, JobOut
 from src.services.job_service import JobService
+from src.utils.redis_stats import record_job_view
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 svc = JobService()
@@ -29,6 +30,14 @@ def get_job(job_id: str):
     job = svc.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job no encontrado")
+    
+    # Registrar la vista del trabajo
+    try:
+        record_job_view(job_id)
+    except Exception:
+        # Si falla el registro de la vista, no interrumpimos la operación principal
+        pass
+    
     return job
 
 @router.put("/{job_id}", response_model=JobOut)

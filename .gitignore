@@ -1,9 +1,0 @@
-# Carpetas locales
-data/
-.env
-_pycache_/
-
-# Archivos del sistema
-.vscode/
-.idea/
-.DS_Store
